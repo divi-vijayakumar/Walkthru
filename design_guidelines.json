@@ -1,0 +1,177 @@
+{
+  "project_name": "Walkthru",
+  "tagline": "Walk through your project. Get your quote.",
+  "app_type": "dashboard / saas_app",
+  "archetype": "THE PERFORMANCE PRO / TACTICAL MINIMALISM",
+  "branding": {
+    "name": "Walkthru",
+    "wordmark_text": "WALKTHRU",
+    "wordmark_style": "font-mono font-bold tracking-wider text-orange-500 uppercase text-xl flex items-center gap-2",
+    "tagline": "Walk through your project. Get your quote.",
+    "contractor_seed": {
+      "name": "Apex Remodeling",
+      "company": "Apex Remodeling & Construction Services"
+    }
+  },
+  "colors": {
+    "accent_primary": "#F97316",
+    "accent_hover": "#EA580C",
+    "accent_light": "#FFEDD5",
+    "background_main": "#09090B",
+    "background_card": "#18181B",
+    "background_sidebar": "#121215",
+    "border_color": "#27272A",
+    "text_primary": "#FAFAFA",
+    "text_secondary": "#A1A1AA",
+    "text_muted": "#71717A",
+    "status_badge_colors": {
+      "new": "bg-orange-500/15 text-orange-400 border-orange-500/30",
+      "in_review": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+      "quoted": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+      "archived": "bg-zinc-500/15 text-zinc-400 border-zinc-500/30"
+    }
+  },
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "Plus Jakarta Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "hierarchy": {
+      "h1": "text-3xl font-extrabold tracking-tight text-zinc-100",
+      "h2": "text-xl font-bold tracking-tight text-zinc-100",
+      "h3": "text-lg font-semibold text-zinc-200",
+      "body": "text-sm text-zinc-300 leading-relaxed",
+      "caption": "text-xs font-mono text-zinc-400"
+    }
+  },
+  "layout_and_navigation": {
+    "sidebar": {
+      "width": "w-64",
+      "bg": "bg-zinc-950 border-r border-zinc-800",
+      "items": [
+        {"name": "Dashboard / Leads", "icon": "LayoutDashboard", "active": true},
+        {"name": "Contractor Profile", "icon": "HardHat", "active": false},
+        {"name": "Messages", "icon": "MessageSquare", "active": false},
+        {"name": "Settings", "icon": "Settings", "active": false}
+      ]
+    },
+    "header": {
+      "height": "h-16",
+      "bg": "bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800"
+    }
+  },
+  "seed_data": {
+    "contractor": {
+      "id": "apex-remodeling-01",
+      "name": "Apex Remodeling",
+      "email": "contact@apexremodeling.com",
+      "phone": "(555) 382-9102"
+    },
+    "leads": [
+      {
+        "id": "lead-01",
+        "customer_name": "Marcus Vance",
+        "phone": "(555) 234-5678",
+        "project_type": "Bathroom Remodel",
+        "notes": "Full master bathroom update. Demolition of old tub, modern walk-in tile shower installation, custom double vanity, and new lighting fixtures.",
+        "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+        "status": "new",
+        "created_at": "2026-07-12T09:30:00Z"
+      },
+      {
+        "id": "lead-02",
+        "customer_name": "Elena Rostova",
+        "phone": "(555) 876-5432",
+        "project_type": "Kitchen Backsplash",
+        "notes": "Subway tile backsplash replacement around island and stove wall. Under-cabinet accent LED strip wiring needed.",
+        "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+        "status": "in_review",
+        "created_at": "2026-07-11T14:15:00Z"
+      },
+      {
+        "id": "lead-03",
+        "customer_name": "David Miller",
+        "phone": "(555) 456-7890",
+        "project_type": "Deck Repair",
+        "notes": "Replacing damaged cedar deck boards, reinforcing joists, and applying fresh weatherproofing stain.",
+        "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+        "status": "quoted",
+        "created_at": "2026-07-10T11:45:00Z"
+      }
+    ]
+  },
+  "media_assets": {
+    "images": [
+      {
+        "category": "renovation_sample_1",
+        "url": "https://images.unsplash.com/photo-1618832515490-e181c4794a45?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwyfHxob21lJTIwcmVtb2RlbGluZyUyMHJlbm92YXRpb24lMjBjb25zdHJ1Y3Rpb258ZW58MHx8fHwxNzkyODYyMjk0fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Kitchen under renovation"
+      },
+      {
+        "category": "renovation_sample_2",
+        "url": "https://images.unsplash.com/photo-1505798577917-a65157d3320a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwzfHxob21lJTIwcmVtb2RlbGluZyUyMHJlbm92YXRpb24lMjBjb25zdHJ1Y3Rpb258ZW58MHx8fHwxNzkyODYyMjk0fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Contractor working with miter saw"
+      }
+    ],
+    "sample_videos": [
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
+    ]
+  },
+  "key_components_to_build": [
+    {
+      "name": "Sidebar",
+      "description": "Contains Walkthru wordmark, Apex Remodeling contractor info, and navigation items."
+    },
+    {
+      "name": "LeadsTable",
+      "description": "Displays 3 leads with customer name, phone, project type, date, interactive status badge, and action to open lead details."
+    },
+    {
+      "name": "LeadDetailView",
+      "description": "Detailed view containing HTML5 video player for video_url, project notes, status changer dropdown/buttons, message thread panel, empty Extracted Scope panel, and empty Quote panel."
+    },
+    {
+      "name": "StatusChanger",
+      "description": "Allows quick status update (new, in_review, quoted, archived) with optimistic update."
+    },
+    {
+      "name": "MessageThreadPanel",
+      "description": "Panel for sending and reading client messages associated with the lead."
+    },
+    {
+      "name": "EmptyExtractedScopePanel",
+      "description": "Clean placeholder panel titled 'Extracted Scope' with a friendly empty state ('AI visual scope extraction pending...')."
+    },
+    {
+      "name": "EmptyQuotePanel",
+      "description": "Clean placeholder panel titled 'Quote' with a friendly empty state ('No quote generated yet')."
+    }
+  ],
+  "testing_requirements": {
+    "rule": "Every key element MUST have data-testid in kebab-case format.",
+    "required_test_ids": [
+      "sidebar-brand-wordmark",
+      "contractor-profile-card",
+      "leads-table",
+      "lead-row-hero",
+      "lead-status-badge",
+      "lead-detail-video-player",
+      "lead-detail-notes",
+      "lead-detail-status-selector",
+      "lead-detail-messages-panel",
+      "lead-detail-message-input",
+      "lead-detail-send-message-btn",
+      "extracted-scope-empty-panel",
+      "quote-empty-panel"
+    ]
+  },
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Use Javascript (.js / .jsx) components.",
+    "Do NOT use transparent backgrounds on headers or overlays.",
+    "Use generous spacing (p-6, p-8) to prevent text collision.",
+    "Add hover micro-interactions to all buttons and card items.",
+    "Ensure contrast ratio exceeds WCAG AA standards using dark theme (#09090B base with #18181B panels and #F97316 accent).",
+    "Always include data-testid on critical elements."
+  ]
+}
