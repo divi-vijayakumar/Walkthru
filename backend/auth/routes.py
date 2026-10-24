@@ -38,7 +38,17 @@ async def session_user(token):
     return await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0}), None
 
 
+def same_origin(request: Request) -> bool:
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    return origin.split("://", 1)[-1].rstrip("/") == host
+
+
 async def require_user(request: Request) -> dict:
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not same_origin(request):
+        raise HTTPException(403, "Cross-site request blocked")
     auth = request.headers.get("authorization", "")
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
     user, problem = await session_user(request.cookies.get("session_token"))

@@ -1,11 +1,12 @@
 import logging
+import secrets
 from datetime import timedelta
 from core.db import db, iso, now, portal_link, CONTRACTOR_ID
 from core.status import FLOW
 from pricing.engine import new_state, price, margin_pct, drivers, r500, DEPOSIT_PCT
 
 logger = logging.getLogger("seed")
-SEED_VERSION = 4
+SEED_VERSION = 5
 COLLECTIONS = ["contractors", "leads", "call_sessions", "quotes", "contracts", "payments", "pricing_states",
                "followups", "frames", "sms_log", "scopes", "messages"]
 
@@ -66,7 +67,7 @@ async def insert_lead(row):
     name, phone, source, ask, status, steps, spec = row
     first = name.split()[0]
     lead_id = f"lead-{first.lower()}"
-    token = f"demo-{first.lower()}"
+    token = secrets.token_urlsafe(16)
     history = [{"status": FLOW[i], "at": ago(s)} for i, s in enumerate(steps)]
     lead = {"id": lead_id, "contractor_id": CONTRACTOR_ID, "name": name, "phone": phone, "source": source, "ask": ask,
             "status": status, "status_history": history, "portal_token": token,

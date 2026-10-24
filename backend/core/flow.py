@@ -56,7 +56,7 @@ async def create_lead(name, phone, source, ask):
 
 async def start_agent(lead):
     contractor = await get_contractor()
-    token = lead.get("portal_token") or secrets.token_urlsafe(8)
+    token = lead.get("portal_token") or secrets.token_urlsafe(16)
     link = portal_link(token)
     if lead["status"] == "new":
         await set_status(lead["id"], "invited", {"portal_token": token, "portal_link": link})
@@ -86,7 +86,7 @@ async def start_call(lead):
 async def add_caption(lead, role, text):
     line = {"role": role, "text": text, "at": iso()}
     await db.call_sessions.update_one(
-        {"lead_id": lead["id"], "ended_at": None},
+        {"lead_id": lead["id"], "ended_at": None, "transcript.399": {"$exists": False}},
         {"$push": {"transcript": line}, "$set": {"live_caption": text, "live_role": role}})
 
 

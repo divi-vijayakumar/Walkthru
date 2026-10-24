@@ -1,4 +1,5 @@
 import os
+import hmac
 import json
 import asyncio
 import logging
@@ -82,14 +83,43 @@ def parse_args(raw):
     return raw or {}
 
 
-@router.post("/tools")
-async def tools(request: Request):
-    results = []
+def vapi_authorized(request: Request) -> bool:
+    """Vapi must send the shared server secret (X-Vapi-Secret or Bearer). No secret configured = locked."""
+    secret = os.environ.get("VAPI_SERVER_SECRET")
+    if not secret:
+        return False
+    sent = request.headers.get("x-vapi-secret", "")
+    auth = request.headers.get("authorization", "")
+    if not sent and auth.lower().startswith("bearer "):
+        sent = auth[7:].strip()
+    return hmac.compare_digest(sent.encode(), secret.encode())
+
+
+async def read_message(request: Request) -> dict:
     try:
         payload = await request.json()
-        msg = payload.get("message") or {}
-        mode = os.environ.get("SIMULATE_MODE", "none")
+    except ValueError:
+        return {}
+    return (payload.get("message") or {}) if isinstance(payload, dict) else {}
+
+
+@router.post("/tools")
+async def tools(request: Request):
+    msg = await read_message(request)
+    if not vapi_authorized(request):
+        calls = msg.get("toolCallList") or []
+        return JSONResponse({"results": [{"toolCallId": tc.get("id", ""), "error": "Unauthorized"} for tc in calls]}, status_code=200)
+    try:
         lead = await resolve_lead(msg)
+    except Exception:
+        lead = None
+    return JSONResponse({"results": await run_tool_calls(msg, lead)}, status_code=200)
+
+
+async def run_tool_calls(msg: dict, lead) -> list:
+    results = []
+    try:
+        mode = os.environ.get("SIMULATE_MODE", "none")
         for tc in msg.get("toolCallList") or []:
             tid = tc.get("id", "")
             fn = tc.get("function") or tc
@@ -114,7 +144,7 @@ async def tools(request: Request):
                 results.append({"toolCallId": tid, "error": f"tool failed: {e}"})
     except Exception as e:
         logger.exception("tool payload failed: %s", e)
-    return JSONResponse({"results": results}, status_code=200)
+    return results
 
 
 def parse_transcript(msg):
@@ -135,8 +165,10 @@ def parse_transcript(msg):
 
 @router.post("/webhook")
 async def webhook(request: Request):
+    if not vapi_authorized(request):
+        return JSONResponse({"received": False, "error": "Unauthorized"}, status_code=200)
     try:
-        msg = (await request.json()).get("message") or {}
+        msg = await read_message(request)
         if msg.get("type") == "end-of-call-report":
             lead = await resolve_lead(msg)
             if lead:

@@ -8,7 +8,7 @@ const listeners = () => {
   return { add: (cb) => { set.add(cb); return () => set.delete(cb); }, emit: (...a) => set.forEach((cb) => cb(...a)) };
 };
 
-// Scripted conversation that drives the real backend tool and webhook endpoints.
+// Scripted conversation that drives the same backend tool and end-of-call logic, scoped to this portal link.
 export function createMockAdapter({ token, data, mode = "first", chat = false }) {
   const captions = listeners();
   const ends = listeners();
@@ -37,7 +37,7 @@ export function createMockAdapter({ token, data, mode = "first", chat = false })
     const body = { message: { type: "tool-calls", call: { id: callId, assistantOverrides: { variableValues } },
       toolCallList: [{ id: `tc-${Date.now()}`, type: "function", function: { name, arguments: args } }] } };
     try {
-      const { data: res } = await api.post("/vapi/tools", body, { timeout: 40000 });
+      const { data: res } = await api.post(`/portal/${token}/agent/tools`, body, { timeout: 40000 });
       const r = res.results?.[0] || {};
       return r.error ? { status: "error", say: r.error } : JSON.parse(r.result);
     } catch {
@@ -72,7 +72,7 @@ export function createMockAdapter({ token, data, mode = "first", chat = false })
     clearTimeout(timer);
     replyResolve?.("");
     stream?.getTracks().forEach((t) => t.stop());
-    await api.post("/vapi/webhook", { message: { type: "end-of-call-report", endedReason: "customer-ended-call",
+    await api.post(`/portal/${token}/agent/end`, { message: { type: "end-of-call-report", endedReason: "customer-ended-call",
       call: { id: callId, assistantOverrides: { variableValues } }, artifact: { messages: transcript } } }).catch(() => {});
     ends.emit();
   };

@@ -31,10 +31,11 @@ app.include_router(vapi_router)
 app.include_router(payments_router)
 app.include_router(auth_router)
 
+origins = [o.strip() for o in os.environ["CORS_ORIGINS"].split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_credentials="*" not in origins,  # never send credentials to a wildcard/reflected origin
+    allow_origins=origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
