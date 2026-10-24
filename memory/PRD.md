@@ -28,7 +28,7 @@ Part B portal (/w/{token}): welcome, call screen (camera off by default, frames 
 
 - 2026-10-24: Stripe Checkout (claimable test sandbox) for the 5% deposit: /api/portal/{token}/deposit/checkout, /api/payments/status/{id}, /api/stripe/webhook; simulated /deposit/pay removed (dev advance still simulates). Tax mode: Stripe calculates only, falls back to no tax until a business address is set in Stripe.
 - 2026-10-24: Emergent Google sign-in gates / and /dev and all contractor APIs; allow-list env OWNER_EMAILS=divi@velvee.ai; portal stays public.
-- Twilio: code ready (core/sms.py), waiting for TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, SMS_ALLOWLIST.
+- 2026-10-24: Twilio keys + SMS_ALLOWLIST (1 number) added; credentials verified (trial account, from-number on account). VAPI_PUBLIC_KEY + VAPI_ASSISTANT_ID added; VAPI_SERVER_SECRET not set and VOICE_MODE still mock, so voice stays scripted.
 - 2026-10-24: Security audit fixes: /api/vapi/* require VAPI_SERVER_SECRET (X-Vapi-Secret/Bearer), mock agent uses token-scoped /api/portal/{token}/agent/tools|end; tool calls only during an active call; random portal tokens; CORS no credentials with wildcard; Origin check blocks cross-site writes on dashboard APIs; frame (300/call, 600k) and caption (400 lines) caps.
 
 ## Backlog
