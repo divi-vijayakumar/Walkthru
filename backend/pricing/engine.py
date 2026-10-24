@@ -86,7 +86,8 @@ def new_state(a):
                       "say": "I still need " + " and ".join(missing).replace("_", " ") + "."}
     changes = " ".join(a.get("requested_changes") or []).lower()
     adds = [n for n, kws in ADDON_KEYWORDS.items() if any(k in changes for k in kws)]
-    issues = (a.get("known_issues") or "").lower()
+    issues = re.sub(r"\b(no|not any|without|never had)\s+(\w+\s+)?(water|mold|soft|rot|leak)\w*", "",
+                    (a.get("known_issues") or "").lower())
     st = {"size": size, "finish": finish, "adds": adds, "credits": {},
           "damage": any(w in issues for w in ["water", "mold", "soft", "rot", "leak"]),
           "rush": is_rush(a.get("timeline")), "disc": 0}

@@ -1,0 +1,46 @@
+{
+  "summary": "Full rebuild (Walkthru v2) tested end to end. Backend: 18/18 pytest pass (health, dashboard seed counts + median 400s, vapi tools robustness/pricing/discount cap/needs_human, webhook end-of-call both branches, start-agent invite/resend/400/404, agent switch auto-invite, /dev advance through all 8 statuses + drop, portal open/sign/pay with negative cases, recall, take-over, transcript). Frontend: dashboard (design, funnel counts, filters status/source/ask + empty state, Start agent on Dana -> Invited + 'Sent (simulated)' toast with Copy link, row select updates drawer, Maya On call now card with ticking timer and live estimate, Transcript dialog, Take over prompt + Escalated tag, Recall with cancel/confirm), agent switch On/Off persists, /dev create + auto-invite + Advance 6x with dashboard tab toasting '<name>: <status>' within ~3s each step, portal voice flow at 390px (v1 $19,000-$23,000 -> v2 $25,000-$30,500 with NEW walk-in shower/double vanity lines, natural end -> quote $27,600 -> contract_sent -> pending_deposit $1,380 -> deposit_received, done screen), Talk to change (vinyl -$1,200 v2, 6% discount v3, $18,612), chat mode (suggested chip + typed replies), End early -> fallback with quote_pending, Priya fallback text, mobile dashboard stacks. Found and fixed 1 UI bug (agent switch knob overflow). Sample data reset at the end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/vapi/webhook, /api/vapi/tools (resolve_lead)", "issue": "If variableValues.lead_token is missing/unknown, resolve_lead falls back to the most recently active walkthru_initiated lead. A stray end-of-call-report (or a real Vapi call misconfigured without lead_token) would end someone else's live call (e.g. Maya) and price on their lead. Consider only falling back by call.id mapping, or not at all."},
+      {"endpoint": "pricing/engine.py new_state", "issue": "Damage detection is keyword-only without negation: 'no leaks' / 'no water damage' / 'no soft spots' adds the $1,800 water damage allowance."},
+      {"endpoint": "/api/vapi/tools persist()", "issue": "A tool estimate outside a live call on a 'new' or 'invited' lead jumps status straight to quote_generated, skipping walkthru_initiated/completed in status_history (journey shows gaps)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AgentSwitch (DashboardHeader.jsx)", "issue": "FIXED by testing agent: knob span was absolute without left-0, so in On state the knob rendered at track.x+46px, overflowing the track and covering the 'On' label. Added left-0; verified knob now inside track for both On/Off.", "selector": "[data-testid='agent-switch']", "priority": "MEDIUM"},
+      {"component": "Toaster position (App.js)", "issue": "Toasts at top-right sit exactly over the Agentic lead management switch; while a toast is visible (and hovering pauses dismissal) the switch can't be clicked. With 3s polling toasts that's frequent. Move toaster to bottom-right or offset it.", "selector": "[data-sonner-toast]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Portal chat/voice script (scripts.js firstBath)", "issue": "Line 'Let me price a standard package for a medium bath.' is hardcoded. In chat mode, typing 'large' + 'Premium' prices Premium/large ($41,500-$50,500) but the agent still says 'standard package for a medium bath'. Build this line from ctx like the tool args.", "affected_selectors": ["[data-testid='chat-screen']"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard lead drawer", "issues": ["'Take over call' button shows on every lead, including ones with no call (deposit_received, quoted). Consider showing it only when walkthru_initiated.", "Journey step for invited reads 'Text sent, link opened' even when the link was never opened."]},
+      {"screen": "Portal fallback / quote", "issues": ["Phone shown raw as typed ('4085550155') for /dev-created leads; seeded leads are formatted. Format phone for display.", "Header on quote/contract/deposit/fallback screens drops the orange logo icon that the welcome screen shows (minor inconsistency)."]},
+      {"screen": "Seed data", "issues": ["Maya's seeded transcript has two Homeowner lines in a row with no agent reply between them."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_walkthru_v2_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Move the Sonner Toaster away from the agent switch (e.g. position='bottom-right')",
+    "Make the 'Let me price a ... package for a ... bath' line in scripts.js reflect the parsed size/finish",
+    "Tighten resolve_lead fallback so a webhook without a valid lead_token can't end another lead's live call",
+    "Optional: negation handling for known_issues damage keywords; show Take over only for live calls; format phone numbers"
+  ],
+  "critical_code_review_comments": [
+    "vapi/routes.py resolve_lead fallback to latest walkthru_initiated lead is risky with concurrent calls / real Vapi",
+    "pricing/engine.py damage keywords ignore negation ('no leaks' -> damage allowance)",
+    "portal/routes.py frames endpoint stores full base64 JPEGs every 2s into Mongo with no cap/TTL; collection will grow fast during camera-on calls",
+    "Code is well split (all files < 200 lines), data-testids comprehensive, env vars used correctly, _id excluded everywhere"
+  ],
+  "updated_files": ["/app/frontend/src/dashboard/DashboardHeader.jsx", "/app/backend/tests/test_walkthru_v2_api.py (new)", "/app/backend/tests/test_walkthru_api.py (deleted: obsolete v1 tests against removed endpoints)"],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "95% (all requested flows pass; 1 bug fixed, toaster overlap + script wording remain)"},
+  "test_credentials": "No auth in this app; /app/memory/test_credentials.md not needed",
+  "seed_data_creation": "Created TEST_-prefixed leads during testing; POST /api/dev/reset called at the end (9 seeded leads restored, agent switch On as seeded).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: pytest /app/backend/tests/test_walkthru_v2_api.py (it resets seed data before and after). Mock voice script ~55-60s for first bathroom call, change call ~35s. In headless chromium mic/camera were available (fake devices) so no 'Microphone not available' toast appeared and camera toggle showed video. Seeded agent_enabled=true. Toasts cover the agent switch: use JS click or force when toggling.",
+  "rca of the issue": "Agent switch knob: absolutely positioned span without explicit left offset took its static position inside the track's inline formatting context (~24px), then translate-x-[22px] pushed it to 46px, past the 48px track. Fix: left-0."
+}

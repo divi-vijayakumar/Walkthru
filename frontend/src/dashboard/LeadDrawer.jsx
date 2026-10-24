@@ -66,11 +66,11 @@ export const LeadDrawer = ({ lead, now, onChanged }) => {
       {lead.status === "walkthru_initiated" && <OnCallCard lead={lead} now={now} />}
       <Journey lead={lead} />
       {lead.escalated && <TakeoverPrompt lead={lead} />}
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <button data-testid="take-over-btn" onClick={() => post("take-over", "You're on it. Call the homeowner now.")}
+      <div className={`mt-5 grid gap-3 ${lead.status === "walkthru_initiated" ? "grid-cols-2" : "grid-cols-1"}`}>
+        {lead.status === "walkthru_initiated" && <button data-testid="take-over-btn" onClick={() => post("take-over", "You're on it. Call the homeowner now.")}
           className="min-h-[44px] rounded-lg bg-wt-accent px-3 text-[15px] font-bold text-white transition-colors hover:bg-wt-accentDark">
           Take over call
-        </button>
+        </button>}
         <button data-testid="transcript-btn" onClick={() => setShowTranscript(true)}
           className="min-h-[44px] rounded-lg border border-wt-line bg-white px-3 text-[15px] font-bold text-wt-ink hover:border-wt-ink/30">
           Transcript

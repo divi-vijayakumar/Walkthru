@@ -13,7 +13,7 @@ export const AgentSwitch = ({ enabled, onToggle }) => (
       className="flex min-h-[44px] shrink-0 items-center gap-2"
     >
       <span className={`relative block h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${enabled ? "bg-wt-teal" : "bg-[#C9CFD8]"}`}>
-        <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 ${enabled ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+        <span className={`absolute left-0 top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 ${enabled ? "translate-x-[22px]" : "translate-x-0.5"}`} />
       </span>
       <span data-testid="agent-switch-label" className={`w-8 shrink-0 text-left text-sm font-bold ${enabled ? "text-wt-teal" : "text-wt-muted"}`}>
         {enabled ? "On" : "Off"}

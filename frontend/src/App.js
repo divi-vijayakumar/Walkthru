@@ -13,7 +13,7 @@ function App() {
         <Route path="/w/:token" element={<PortalPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      <Toaster theme="light" position="top-right" closeButton />
+      <Toaster theme="light" position="bottom-right" closeButton />
     </BrowserRouter>
   );
 }

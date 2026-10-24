@@ -9,6 +9,13 @@ from core.quotes import latest_quote, save_quote
 from pricing.engine import new_state, price, margin_pct, drivers
 
 
+def format_phone(phone):
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}" if len(digits) == 10 else phone.strip()
+
+
 def first_name(lead):
     return lead["name"].split()[0]
 
@@ -36,7 +43,7 @@ async def create_lead(name, phone, source, ask):
     contractor = await get_contractor()
     at = iso()
     lead = {
-        "id": str(uuid.uuid4()), "contractor_id": CONTRACTOR_ID, "name": name.strip(), "phone": phone.strip(),
+        "id": str(uuid.uuid4()), "contractor_id": CONTRACTOR_ID, "name": name.strip(), "phone": format_phone(phone),
         "source": source, "ask": ask.strip(), "status": "new", "status_history": [{"status": "new", "at": at}],
         "portal_token": None, "portal_link": None, "quote_total": None, "quote_low": None, "quote_high": None,
         "quote_version": None, "escalated": False, "quote_pending": False, "quote_pending_due_at": None,

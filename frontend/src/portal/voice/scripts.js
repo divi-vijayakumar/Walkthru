@@ -19,7 +19,7 @@ const firstBath = (c) => [
   { role: "user", text: "Standard is good. Nothing too fancy." },
   { role: "assistant", text: "Any timeline in mind, or known issues like leaks or soft spots in the floor?" },
   { role: "user", text: "Everything seems solid. We'd like to start in about two months." },
-  { role: "assistant", text: "Great. Let me price a standard package for a medium bath." },
+  { role: "assistant", text: (ctx) => { const a = bathArgs(ctx); return `Great. Let me price a ${a.finish_level} package for a ${a.room_size} bath.`; } },
   { tool: "get_quote_estimate", args: (ctx) => bathArgs(ctx) },
   { role: "assistant", text: (ctx) => `Your estimate is ${rangeOf(ctx.last)}. Is there anything you'd like to change?` },
   { role: "user", text: "Actually, a walk-in shower instead of the tub, and I'd love a double vanity if it fits." },

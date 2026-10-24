@@ -28,7 +28,7 @@ export const OnCallCard = ({ lead, now }) => {
         <span className="text-[13px] text-white/70">
           {lead.quote ? `Live estimate, v${lead.quote.version}` : "Live estimate"}
         </span>
-        <span data-testid="on-call-estimate" className="text-[17px] font-bold tabular">
+        <span data-testid="on-call-estimate" className="whitespace-nowrap text-[17px] font-bold tabular">
           {lead.quote ? range(lead.quote) : "Building..."}
         </span>
       </div>

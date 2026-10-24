@@ -25,9 +25,7 @@ async def resolve_lead(msg):
     values = (call.get("assistantOverrides") or {}).get("variableValues") or {}
     token = values.get("lead_token")
     if token:
-        lead = await db.leads.find_one({"portal_token": token}, {"_id": 0})
-        if lead:
-            return lead
+        return await db.leads.find_one({"portal_token": token}, {"_id": 0})
     return await db.leads.find_one({"status": "walkthru_initiated"}, {"_id": 0}, sort=[("last_activity_at", -1)])
 
 
@@ -37,7 +35,7 @@ async def persist(lead, st, say):
     in_call = lead["status"] == "walkthru_initiated"
     q = await save_quote(lead, items, total, "live" if in_call else "sent",
                          {"margin_pct": margin_pct(st, total), "drivers": drivers(st)})
-    if not in_call and lead["status"] in ("new", "invited", "walkthru_completed"):
+    if not in_call and lead["status"] == "walkthru_completed":
         await flow.mark_quote_ready(await flow.get_lead(lead["id"]))
     return summary(q, say)
 
