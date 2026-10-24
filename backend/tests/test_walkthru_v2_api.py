@@ -1,4 +1,4 @@
-# Walkthru v2 API regression: health, dashboard, vapi tools/webhook, start-agent, dev helpers, portal flow
+# Walkthru v2 API regression: health, dashboard, portal agent tools/end (vapi locked), start-agent, dev helpers, portal flow
 import os
 from datetime import datetime, timezone
 import pytest
@@ -41,9 +41,21 @@ def new_lead(s, name, ask="Bathroom remodel", phone="555-010-1234"):
 def tool_call(s, token, name, args, tid="tc1"):
     body = {"message": {"type": "tool-calls", "call": {"assistantOverrides": {"variableValues": {"lead_token": token}}},
                         "toolCallList": [{"id": tid, "function": {"name": name, "arguments": args}}]}}
-    r = s.post(f"{API}/vapi/tools", json=body)
+    r = s.post(f"{API}/portal/{token}/agent/tools", json=body)
     assert r.status_code == 200
     return r.json()["results"]
+
+
+def end_call(s, token):
+    body = {"message": {"type": "end-of-call-report",
+                        "call": {"assistantOverrides": {"variableValues": {"lead_token": token}}}}}
+    r = s.post(f"{API}/portal/{token}/agent/end", json=body)
+    assert r.status_code == 200
+    return r.json()
+
+
+def token_of(s, name):
+    return lead_by_name(s, name)["portal_token"]
 
 
 BATH_ARGS = {"project_type": "bathroom_remodel", "room_size": "medium", "finish_level": "standard",
@@ -72,12 +84,13 @@ def test_dashboard_seed(s):
 # Vapi tools
 @pytest.mark.parametrize("body", [b"garbage", b"{}", b'{"message": {"toolCallList": [{"id": "x"}]}}', b"[]"])
 def test_tools_garbage_200(s, body):
-    r = s.post(f"{API}/vapi/tools", data=body, headers={"Content-Type": "application/json"})
+    tok = token_of(s, "Priya Shah")
+    r = s.post(f"{API}/portal/{tok}/agent/tools", data=body, headers={"Content-Type": "application/json"})
     assert r.status_code == 200 and "results" in r.json()
 
 
 def test_tools_unknown_tool(s):
-    res = tool_call(s, "demo-luis", "nope", {})
+    res = tool_call(s, token_of(s, "Priya Shah"), "nope", {})
     assert res[0]["toolCallId"] == "tc1" and "error" in res[0]
 
 
@@ -105,9 +118,7 @@ def test_estimate_and_discount(s):
     res = tool_call(s, token, "get_quote_estimate", {"project_type": "kitchen_remodel"})
     assert json.loads(res[0]["result"])["status"] == "needs_human"
     # webhook end-of-call -> quote_generated
-    body = {"message": {"type": "end-of-call-report",
-                        "call": {"assistantOverrides": {"variableValues": {"lead_token": token}}}}}
-    assert s.post(f"{API}/vapi/webhook", json=body).status_code == 200
+    assert end_call(s, token)["ended"] is True
     l = next(x for x in dash(s)["leads"] if x["id"] == lid)
     hist = [h["status"] for h in l["status_history"]]
     assert l["status"] == "quote_generated" and hist[-2] == "walkthru_completed"
@@ -120,9 +131,7 @@ def test_webhook_no_quote_pending(s):
         s.post(f"{API}/leads/{lid}/start-agent")
     token = next(l for l in dash(s)["leads"] if l["id"] == lid)["portal_token"]
     s.post(f"{API}/portal/{token}/call/start")
-    body = {"message": {"type": "end-of-call-report",
-                        "call": {"assistantOverrides": {"variableValues": {"lead_token": token}}}}}
-    assert s.post(f"{API}/vapi/webhook", json=body).status_code == 200
+    assert end_call(s, token)["ended"] is True
     l = next(x for x in dash(s)["leads"] if x["id"] == lid)
     assert l["status"] == "walkthru_completed" and l["quote_pending"] is True
     due = datetime.fromisoformat(l["quote_pending_due_at"])
@@ -132,7 +141,10 @@ def test_webhook_no_quote_pending(s):
 
 def test_webhook_garbage(s):
     r = s.post(f"{API}/vapi/webhook", data=b"xx", headers={"Content-Type": "application/json"})
-    assert r.status_code == 200
+    assert r.status_code == 200 and r.json()["received"] is False
+    tok = token_of(s, "Priya Shah")
+    r = s.post(f"{API}/portal/{tok}/agent/end", data=b"xx", headers={"Content-Type": "application/json"})
+    assert r.status_code in (200, 400, 422)
 
 
 # Start agent
@@ -205,7 +217,8 @@ def test_portal_flow(s):
 
 
 def test_portal_priya_fallback(s):
-    p = s.get(f"{API}/portal/demo-priya").json()
+    p = s.get(f"{API}/portal/{token_of(s, 'Priya Shah')}").json()
+    assert p["lead"]["status"] == "walkthru_completed"
     assert p["lead"]["first_name"] == "Priya" and p["quote"] is None
 
 

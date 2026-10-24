@@ -45,8 +45,7 @@ def test_expired_session_401():
 # Public endpoints stay open
 def test_public_endpoints():
     assert requests.get(f"{API}/health").status_code == 200
-    r = requests.get(f"{API}/portal/demo-luis")
-    assert r.status_code == 200 and "lead" in r.json() or r.status_code == 200
+    assert requests.get(f"{API}/portal/demo-luis").status_code == 404  # SEC-002: guessable tokens gone
     assert requests.post(f"{API}/vapi/tools", json={}).status_code == 200
     assert requests.get(f"{API}/payments/status/x").status_code == 404
 
@@ -102,14 +101,19 @@ def test_logout_without_cookie_ok():
 
 
 # Checkout origin validation
-def test_checkout_origin_mismatch_400():
-    r = requests.post(f"{API}/portal/demo-ana/deposit/checkout", json={"origin_url": "https://evil.example.com"},
+def _ana_token(owner_token):
+    d = requests.get(f"{API}/dashboard", headers={"Authorization": f"Bearer {owner_token}"}).json()
+    return next(l for l in d["leads"] if l["status"] == "pending_deposit")["portal_token"]
+
+
+def test_checkout_origin_mismatch_400(owner_token):
+    r = requests.post(f"{API}/portal/{_ana_token(owner_token)}/deposit/checkout", json={"origin_url": "https://evil.example.com"},
                       headers={"Origin": BASE_URL})
     assert r.status_code == 400 and "this site" in r.json()["detail"]
 
 
-def test_checkout_no_origin_header_any_origin_url():
+def test_checkout_no_origin_header_any_origin_url(owner_token):
     # Without Origin header (non-browser client) origin_url is still trusted -> open redirect remains possible
-    r = requests.post(f"{API}/portal/demo-ana/deposit/checkout", json={"origin_url": "https://evil.example.com"})
+    r = requests.post(f"{API}/portal/{_ana_token(owner_token)}/deposit/checkout", json={"origin_url": "https://evil.example.com"})
     print("no-origin-header checkout status:", r.status_code)
     assert r.status_code in (200, 400)

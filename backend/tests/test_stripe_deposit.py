@@ -18,15 +18,19 @@ def s(owner_token):
     sess.post(f"{API}/dev/reset")
 
 
+def tok(s, status):
+    return next(l for l in s.get(f"{API}/dashboard").json()["leads"] if l["status"] == status)["portal_token"]
+
+
 def test_portal_ana_pending_deposit(s):
-    p = s.get(f"{API}/portal/demo-ana").json()
+    p = s.get(f"{API}/portal/{tok(s, 'pending_deposit')}").json()
     assert p["lead"]["status"] == "pending_deposit"
     assert p["payment"]["amount"] == 1945
     assert p.get("payments_test_mode") is True
 
 
 def test_checkout_ana(s):
-    r = s.post(f"{API}/portal/demo-ana/deposit/checkout", json={"origin_url": BASE_URL})
+    r = s.post(f"{API}/portal/{tok(s, 'pending_deposit')}/deposit/checkout", json={"origin_url": BASE_URL})
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["checkout_url"].startswith("https://checkout.stripe.com")
@@ -37,11 +41,11 @@ def test_checkout_ana(s):
     assert set(j.keys()) == {"session_id", "status", "payment_status"}
     assert j["session_id"] == d["session_id"] and j["status"] == "initiated" and j["payment_status"] == "pending"
     # lead still pending (unpaid)
-    assert s.get(f"{API}/portal/demo-ana").json()["lead"]["status"] == "pending_deposit"
+    assert s.get(f"{API}/portal/{tok(s, 'pending_deposit')}").json()["lead"]["status"] == "pending_deposit"
 
 
 def test_checkout_not_pending(s):
-    r = s.post(f"{API}/portal/demo-marcus/deposit/checkout", json={"origin_url": BASE_URL})
+    r = s.post(f"{API}/portal/{tok(s, 'contract_sent')}/deposit/checkout", json={"origin_url": BASE_URL})
     assert r.status_code == 400
     assert "deposit" in r.json()["detail"].lower()
 
@@ -51,7 +55,7 @@ def test_checkout_bad_token(s):
 
 
 def test_checkout_missing_origin(s):
-    assert s.post(f"{API}/portal/demo-ana/deposit/checkout", json={}).status_code == 422
+    assert s.post(f"{API}/portal/{tok(s, 'pending_deposit')}/deposit/checkout", json={}).status_code == 422
 
 
 def test_status_unknown(s):
@@ -59,7 +63,7 @@ def test_status_unknown(s):
 
 
 def test_simulated_pay_removed(s):
-    assert s.post(f"{API}/portal/demo-ana/deposit/pay").status_code in (404, 405)
+    assert s.post(f"{API}/portal/{tok(s, 'pending_deposit')}/deposit/pay").status_code in (404, 405)
 
 
 def test_webhook_bad_signature(s):
@@ -71,7 +75,7 @@ def test_webhook_bad_signature(s):
 
 
 def test_dev_advance_from_pending_deposit(s):
-    lead = next(l for l in s.get(f"{API}/dashboard").json()["leads"] if l["portal_token"] == "demo-ana")
+    lead = next(l for l in s.get(f"{API}/dashboard").json()["leads"] if l["status"] == "pending_deposit")
     r = s.post(f"{API}/dev/leads/{lead['id']}/advance")
     assert r.status_code == 200 and r.json()["lead_status"] == "deposit_received"
-    assert s.post(f"{API}/portal/demo-ana/deposit/checkout", json={"origin_url": BASE_URL}).status_code == 400
+    assert s.post(f"{API}/portal/{lead['portal_token']}/deposit/checkout", json={"origin_url": BASE_URL}).status_code == 400

@@ -1,0 +1,43 @@
+{
+  "summary": "Verified security fixes SEC-001..SEC-004 and ran a regression pass. Backend: added test_security_fixes.py (19 tests). Moved the 3 existing suites off demo-* tokens (they now get tokens from /api/dashboard) and off /api/vapi/* (they now use /api/portal/{token}/agent/tools|end). Result: 67/67 pass when run serially (-n 0). SEC-001: /api/vapi/tools returns 200 {results:[{toolCallId,error:'Unauthorized'}]} with no secret or a wrong one; no quote is created and Maya stays walkthru_initiated. /api/vapi/webhook returns {received:false} and does not end Maya's call. The portal agent endpoints only act on the lead in the URL token: a lead_token for a different lead in the body is ignored. SEC-002: all tokens are 22-char urlsafe and unique, /portal/demo-* returns 404, and reset rotates the tokens. SEC-003: a foreign Origin (and a lookalike host suffix) gets 403 'Cross-site request blocked' for PATCH/POST with Bearer or cookie. Same-origin requests work, and no Access-Control-Allow-Credentials header is sent. SEC-004: frames with no call -> 400, >600k -> 422, non-JPEG -> 422, the 301st frame -> 429; captions stop at 400 lines; caption >2000 chars -> 422. Frontend at 390px: full mock voice call on Luis (v1 $19,000-$23,000 -> v2 $25,000 to $30,500 -> quote $27,600 -> sign -> contract (name prefilled) -> deposit $1,380 -> redirect to checkout.stripe.com). It only used call/start, agent/tools x2 and agent/end, with no /vapi calls. Chat mode reached $27,600 the same way. Talk to change this on Elena: v2 $14,400 -> v3 $12,408. Priya's fallback screen is correct. Dashboard at 1920px: agent switch, Start agent on Dana (simulated SMS), take over Maya, recall Tom, and Luis showing as Pending deposit all worked with zero 4xx. /dev: without a cookie it shows the login screen; create TEST_ lead, advance, Open portal (random token) and Reset all work.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/portal/{token}/agent/tools", "issue": "No lead-status/active-call guard. On Ana (pending_deposit, contract v1, payment $1,945), get_quote_estimate saved quote v2 $15,500 status 'sent'. Afterwards the portal quote and the dashboard quote_total showed 15500 while the contract and payment stayed on v1/$1,945. Anyone with the link can rewrite the quote after signing; this likely also applies to deposit_received leads. Fix: only run tools when the lead has an active call session (or status is walkthru_initiated or walkthru_completed/quote_generated for the change flow), and reject contract_sent/pending_deposit/deposit_received/dropped like start_call does."},
+      {"endpoint": "POST /api/portal/{token}/frames", "issue": "The 300-frame cap is checked with count-then-insert, so parallel requests can go slightly over the cap. Low risk."},
+      {"endpoint": "vapi/routes.py resolve_lead", "issue": "Once VAPI_SERVER_SECRET is set, an authorized Vapi call with no lead_token still falls back to 'most recent walkthru_initiated lead', so it can act on the wrong lead. Consider requiring lead_token."},
+      {"endpoint": "auth/routes.py create_session/logout", "issue": "The cookie is still SameSite=None. CSRF is now mitigated by the Origin check; SameSite=Lax would add defense in depth (frontend and API are same-origin)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_security_fixes.py", "/app/backend/tests/test_walkthru_v2_api.py", "/app/backend/tests/test_stripe_deposit.py", "/app/backend/tests/test_auth_google.py", "/app/test_reports/pytest/pytest_results_iter5.xml"],
+  "action_items": [
+    "Guard /api/portal/{token}/agent/tools (and optionally agent/end) by lead status or active call so a signed/paid quote can't be rewritten from the portal link",
+    "Optional: make the frame cap atomic, require lead_token in the Vapi resolve_lead, and use a SameSite=Lax cookie"
+  ],
+  "critical_code_review_comments": [
+    "vapi_authorized uses hmac.compare_digest and is locked when the secret is unset: correct",
+    "portal agent_tools/agent_end correctly ignore the body lead_token (they use lead_by_token from the URL)",
+    "run_tool_calls has no status check, so the portal path inherits the old 'quote can change at any stage' behaviour",
+    "same_origin(): if the Origin header is missing the request is allowed (fine for non-browser clients with Bearer). It compares against x-forwarded-host, which works behind this ingress",
+    "CORS allow_credentials is disabled for the wildcard: verified on preflight and on simple GET",
+    "The mock adapter still puts lead_token in variableValues. This is harmless but redundant"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_security_fixes.py (new)",
+    "/app/backend/tests/test_walkthru_v2_api.py (tokens from dashboard, /portal/{token}/agent/* instead of /vapi/*, vapi webhook asserts received:false)",
+    "/app/backend/tests/test_stripe_deposit.py (tokens looked up by status)",
+    "/app/backend/tests/test_auth_google.py (demo-luis -> 404, checkout tests use the dashboard token)"
+  ],
+  "success_rate": {"backend": "100% (67/67 serial)", "frontend": "100%"},
+  "test_credentials": "No passwords. A Mongo session was created for the existing divi@velvee.ai user (test_session_iter5ui) and deleted afterwards. All test_session* sessions and test_outsider users were removed; user_sessions is empty.",
+  "seed_data_creation": "Created TEST_ leads through the tests and /dev. Ran the Luis/Elena/Ana flows. POST /api/dev/reset (authenticated, same-origin) was called at the end; 0 TEST_ leads remain. Tokens rotate on every reset.",
+  "flaky_tests": "With pytest-xdist (default -n 2), test_portal_flow and test_dev_advance_from_pending_deposit fail because module fixtures in different workers call /dev/reset concurrently, which also rotates tokens. This is a test isolation problem, not an app bug. Run with -n 0.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0. Portal tokens are random and rotate on /dev/reset, so always look them up from /api/dashboard or Mongo after a reset. The full mock voice call takes about 65s; Talk to change takes about 32s. /api/vapi/* is always Unauthorized while VAPI_SERVER_SECRET is unset. The users collection still holds the pre-existing divi@velvee.ai user (test-user-e197abe586). It was not created by this run, so it was left in place."
+}

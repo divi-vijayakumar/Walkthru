@@ -136,6 +136,9 @@ async def run_tool_calls(msg: dict, lead) -> list:
                 if not lead:
                     results.append({"toolCallId": tid, "error": "No active lead found for this call"})
                     continue
+                if lead["status"] != "walkthru_initiated":
+                    results.append({"toolCallId": tid, "error": "No call in progress for this lead"})
+                    continue
                 out = await handler(lead, parse_args(fn.get("arguments")), mode)
                 lead = await flow.get_lead(lead["id"])
                 results.append({"toolCallId": tid, "result": json.dumps(out)})
