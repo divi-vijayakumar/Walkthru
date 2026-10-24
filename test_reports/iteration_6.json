@@ -1,0 +1,14 @@
+{
+  "summary": "Verified the tool-call gating in run_tool_calls. Backend: new test file test_tool_call_gating.py, 6 of 6 pass. For Ana (pending_deposit), Chris (deposit_received) and Marcus (contract_sent), agent/tools get_quote_estimate returns exactly {results:[{toolCallId:'tcG', error:'No call in progress for this lead'}]}. The quotes collection is unchanged for each, and each status is unchanged. Ana still has 1 quote, v1, total 38900. Maya (walkthru_initiated) still works: result low/high 25000/30500 and +1 quote. /api/vapi/tools is still Unauthorized because VAPI_SERVER_SECRET is unset, so the authorized vapi path could not be exercised live. It shares the same run_tool_calls code, which was reviewed. UI regression at 390px: Luis full mock voice call went from v1 $19,000 to $23,000 to v2 $25,000 to $30,500, and reached the quote screen with $27,600. Elena 'Talk to change this' called call/start first, then 2 successful agent/tools calls, and went from $14,400 to v3 $12,408 ($11,000 to $13,500). Cleanup done: /dev/reset returned 200 and the test sessions were deleted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_tool_call_gating.py", "/app/test_reports/pytest/pytest_tool_gating.xml"],
+  "action_items": [],
+  "critical_code_review_comments": ["The status gate in run_tool_calls is correct. The order of checks is unknown tool, then no lead, then status. So an unknown tool name on a non-active lead returns 'Unknown tool' rather than 'No call in progress'. This is harmless."],
+  "updated_files": ["/app/backend/tests/test_tool_call_gating.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None beyond temporary Mongo sessions (deleted). Data reset via /api/dev/reset.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_tool_call_gating.py resets data in the module fixture and again on teardown. Portal tokens rotate on reset. The authorized /api/vapi/tools path can only be tested live if VAPI_SERVER_SECRET is set."
+}
