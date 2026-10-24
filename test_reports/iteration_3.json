@@ -1,0 +1,45 @@
+{
+  "summary": "Tested Stripe Checkout (TEST mode) deposit integration end-to-end. Backend: 9 new tests in test_stripe_deposit.py (checkout session for demo-ana $1,945 -> checkout.stripe.com URL + cs_test_ id + payment_transactions record; 400 for contract_sent lead; 404 bad token; 422 missing origin_url; status endpoint returns only session_id/status/payment_status; unknown session 404; old /deposit/pay 404/405; webhook bad/missing signature 400; dev advance from pending_deposit -> deposit_received and checkout then 400). Updated old regression test that used removed /deposit/pay. All 27 pass serially. UI at 390px: deposit screen shows 'Pay deposit $1,945' + 4242 test note; redirect to Stripe; paid with 4242 card -> back to /w/demo-ana?session_id=... -> done screen 'You're booked, Ana.'; DB payment method=stripe, reference=session id, tx completed/paid with payment_intent; real Stripe webhooks hitting /api/stripe/webhook return 200; dashboard row shows Ana Pereira 'Deposit received'. Confirming screen verified with an unpaid session_id. Fresh TEST_ lead created via /dev, advanced to pending_deposit, paid via Stripe ($1,050 = 5% of $21,000) -> done. Cancel flow: return to deposit screen worked BUT 'Payment cancelled' toast never appeared -> RCA'd and fixed (see rca). Data reset via /api/dev/reset at end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/portal/{token}/deposit/checkout", "issue": "origin_url is taken from the client unvalidated and used for success_url/cancel_url; anyone can mint a Stripe session that redirects to an arbitrary domain. Validate against an allowed origin (e.g. env FRONTEND origin)."},
+      {"endpoint": "POST /api/portal/{token}/deposit/checkout", "issue": "Every click creates a new Stripe session + 'initiated' payment_transactions row (7 orphan rows observed for one lead). Consider reusing an open session or expiring old ones."},
+      {"endpoint": "payments/routes.py create_session", "issue": "Tax fallback path drops billing_address_collection='required', so only country+ZIP are collected (expected given sandbox has no head office address, just noting)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PortalPage cancel toast", "issue": "FIXED BY TESTER: 'Payment cancelled' toast was never shown on /w/{token}?payment=cancelled", "selector": "section[aria-label*='Notifications']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Portal deposit screen 390px", "issues": ["Sonner Toaster position bottom-right overlaps the full-width 'Pay deposit' button on mobile; consider position='top-center' for portal."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_stripe_deposit.py", "/app/backend/tests/test_walkthru_v2_api.py", "/app/test_reports/pytest/pytest_results_iter3.xml"],
+  "action_items": [
+    "Validate origin_url against an allowlisted origin in deposit_checkout",
+    "Remove hardcoded fallback stripe.api_key = 'sk_test_emergent' (fail fast if STRIPE_SECRET_KEY missing)",
+    "PortalPage polling error toast hardcodes 'Apex will follow up' - use data.contractor.name",
+    "Optional: reuse/expire prior open checkout sessions to avoid orphan transactions",
+    "Optional: move portal toasts to top-center on mobile"
+  ],
+  "critical_code_review_comments": [
+    "payments/routes.py:13 hardcoded default API key violates env fail-fast rule",
+    "deposit_checkout trusts client origin_url (open redirect via Stripe success/cancel URL)",
+    "PortalPage.jsx:54 hardcoded contractor name 'Apex' in error toast",
+    "finalize() is idempotent via payment_status != paid guard - good; webhook signature verified - good"
+  ],
+  "updated_files": [
+    "/app/frontend/src/App.js (moved <Toaster> above <Routes> so it subscribes before page mount effects fire)",
+    "/app/backend/tests/test_walkthru_v2_api.py (portal flow now asserts /deposit/pay removed and uses dev advance)",
+    "/app/backend/tests/test_stripe_deposit.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100% after tester fix (cancel toast was broken before fix)"},
+  "seed_data_creation": "Created TEST_Stripe E2E lead; /api/dev/reset called at end so sample data is clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Stripe Checkout hosted page automation: fill #email, open card accordion via JS click on [data-testid=card-accordion-item-button] (normal click is intercepted), then #cardNumber/#cardExpiry/#cardCvc/#billingName/#billingCountry/#billingPostalCode, uncheck #enableStripePass, click [data-testid=hosted-payment-submit-button]. Cancel = a[href*='payment=cancelled'] (JS click). Webhook usually finalizes before redirect so the confirming screen flashes too fast to catch; test it by navigating to ?session_id=<unpaid id>. Backend tests share one DB and both modules call /dev/reset: with the default xdist -n 2 they occasionally race (test_start_agent failed once); run with -n 0 for deterministic results.",
+  "rca of the issue": "Cancel toast missing: sonner 2.0.3 ToastState only delivers to current subscribers. In App.js <Toaster> was rendered after <Routes>, so React ran PortalPage's mount useEffect (toast('Payment cancelled')) before Toaster's subscribe effect -> toast dropped. Repro: open /w/demo-ana?payment=cancelled -> URL cleared but no toast. Fix: render <Toaster> before <Routes> in App.js. Verified via real Stripe back link: toast 'Payment cancelled / Your deposit is still due whenever you're ready.' shows and deposit screen remains."
+}

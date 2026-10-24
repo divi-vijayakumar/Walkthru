@@ -195,8 +195,10 @@ def test_portal_flow(s):
     assert s.post(f"{API}/portal/{token}/contract/sign", json={"name": "a"}).status_code == 422
     r = s.post(f"{API}/portal/{token}/contract/sign", json={"name": "TEST Portal"})
     assert r.status_code == 200 and r.json()["payment"]["amount"] == 1380
-    r = s.post(f"{API}/portal/{token}/deposit/pay")
-    assert r.status_code == 200 and r.json()["payment"]["status"] == "paid"
+    # simulated /deposit/pay was removed (Stripe now); use dev advance shortcut
+    assert s.post(f"{API}/portal/{token}/deposit/pay").status_code in (404, 405)
+    r = s.post(f"{API}/dev/leads/{lid}/advance")
+    assert r.status_code == 200 and r.json()["lead_status"] == "deposit_received"
     assert s.get(f"{API}/portal/{token}").json()["lead"]["status"] == "deposit_received"
     assert s.post(f"{API}/leads/{lid}/recall-quote").status_code == 400
 

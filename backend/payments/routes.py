@@ -43,7 +43,10 @@ async def finalize(session_id: str, payment_intent=None):
 
 
 @router.post("/portal/{token}/deposit/checkout")
-async def deposit_checkout(token: str, body: CheckoutRequest):
+async def deposit_checkout(token: str, body: CheckoutRequest, request: Request):
+    origin_header = request.headers.get("origin")
+    if origin_header and origin_header.rstrip("/") != body.origin_url.rstrip("/"):
+        raise HTTPException(400, "Checkout must start from this site")
     lead = await flow.lead_by_token(token)
     if lead["status"] != "pending_deposit":
         raise HTTPException(400, "No deposit is due")

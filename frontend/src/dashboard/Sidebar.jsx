@@ -1,5 +1,6 @@
-import { House } from "lucide-react";
+import { House, LogOut } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/dashboard/Auth";
 
 const NAV = ["Leads", "Sessions", "Quotes", "Payments", "Rate card and settings"];
 
@@ -24,6 +25,20 @@ const NavItem = ({ label, active }) => (
   </button>
 );
 
+const UserBar = () => {
+  const auth = useAuth();
+  if (!auth) return null;
+  return (
+    <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3">
+      <p data-testid="signed-in-email" className="min-w-0 flex-1 truncate text-[13px] text-white/75">{auth.user.email}</p>
+      <button data-testid="sign-out-btn" onClick={auth.signOut} aria-label="Sign out"
+        className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-semibold text-white/80 hover:bg-white/10">
+        <LogOut className="h-4 w-4" /> Sign out
+      </button>
+    </div>
+  );
+};
+
 export const Sidebar = ({ contractor }) => (
   <aside className="bg-wt-ink lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[232px] lg:shrink-0 lg:flex-col">
     <div className="flex items-center justify-between px-5 py-4 lg:px-6 lg:py-6">
@@ -38,5 +53,6 @@ export const Sidebar = ({ contractor }) => (
         Quotes go straight to homeowners. You can recall any quote.
       </p>
     </div>
+    <UserBar />
   </aside>
 );

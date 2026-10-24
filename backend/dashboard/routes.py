@@ -2,15 +2,16 @@ import os
 import statistics
 from datetime import datetime
 from typing import Literal
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.db import db, iso, get_contractor, CONTRACTOR_ID
 from core.status import FLOW, ALL_STATUSES, set_status
 from core.quotes import latest_quote
 from core import flow
 from core.seed import reset_seed
+from auth.routes import require_user
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 ORDER = {s: i for i, s in enumerate(ALL_STATUSES)}
 Source = Literal["thumbtack", "handy", "angi", "website", "referral"]
 
