@@ -1,0 +1,51 @@
+{
+  "summary": "Tested Emergent Google sign-in gating of the contractor dashboard. Backend: new test_auth_google.py (24 tests) + conftest.py (Mongo-created sessions); updated both existing suites to send Bearer token. 51/51 pass (serial -n 0 and default -n 2). Verified: 11 protected endpoints + /auth/me -> 401 without auth; bogus Bearer 401; expired session 401 'Session expired'; public /health, /portal/demo-luis, /vapi/tools (200), /payments/status/x (404); /auth/me via Bearer and cookie returns exactly user_id/email/name/picture; non-allow-listed user -> 403 on /auth/me, /dashboard, /dev/config; /auth/session bogus id -> 401, missing body 422; logout deletes session from DB + Max-Age=0 cookie, token then 401; checkout with mismatched Origin -> 400. Frontend: / and /dev show login screen without cookie; google-signin-btn goes to auth.emergentagent.com/?redirect=https://walkthru.../ ; with cookie dashboard loads, sidebar shows divi@velvee.ai + Sign out; Sign out -> login screen, cookie gone, reload stays on login; outsider cookie -> login with 'This account doesn't have access'. /dev create TEST_ lead + advance works; dashboard Start agent on Dana Kim works (simulated SMS toast). Portal /w/demo-luis at 390px loads with no login, mock call starts with Alex caption; /w/demo-ana Pay deposit redirects to checkout.stripe.com. FOUND: (1) cancel toast regression (fixed by tester), (2) RequireAuth trusts stale history state user (reported).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/portal/{token}/deposit/checkout", "issue": "Origin check only applies when an Origin header is sent; a non-browser client omitting Origin can still pass any origin_url (e.g. https://evil.example.com -> 200) so the open-redirect via success/cancel URL remains. Validate origin_url against PUBLIC_APP_URL instead."},
+      {"endpoint": "require_user", "issue": "Cookie takes precedence over Bearer: a stale/invalid session_token cookie causes 401 even when a valid Bearer header is sent. Consider falling back to Bearer if cookie session not found."},
+      {"endpoint": "payments/routes.py:13", "issue": "Still has hardcoded fallback stripe.api_key 'sk_test_emergent' (flagged in iteration_3)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "App.js Toaster / PortalPage cancel toast", "issue": "REGRESSION, FIXED BY TESTER: <Toaster> was placed after <Routes> again (undoing iteration_3 fix), so 'Payment cancelled' toast on /w/{token}?payment=cancelled never showed. Moved Toaster above Routes; verified toast now shows top-center at 390px.", "selector": "[data-sonner-toaster]", "priority": "MEDIUM"},
+      {"component": "Auth.jsx RequireAuth", "issue": "Initial user is taken from location.state.user (set by AuthCallback navigate). React Router persists this in window.history.state, so after a sign-in -> Sign out -> page reload (or Back), or whenever history.state.usr.user exists, the dashboard shell + signed-in email + Sign out render with NO valid session, and only 'Couldn't load leads' toasts appear. Reproduced by setting history.state {usr:{user:{...}}} without cookie and reloading. Fix: always verify with GET /auth/me (use state.user only as optimistic placeholder), and clear state on sign-out (navigate(pathname,{replace:true,state:null})).", "selector": "[data-testid=dashboard-page]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Session expiry while on dashboard", "issue": "DashboardPage polling swallows errors; on 401/403 the user stays on a stale dashboard instead of being sent to the login screen. Add an axios interceptor or handle 401 in load() to reset auth.", "affected_selectors": ["[data-testid=dashboard-page]"]}
+    ],
+    "design_issues": [
+      {"screen": "Portal cancel toast (dev only)", "issues": ["Under React.StrictMode the 'Payment cancelled' and 'Couldn't load leads' toasts appear twice (unguarded mount effects). Harmless in prod build; guard with a ref or toast id if desired."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_auth_google.py", "/app/backend/tests/conftest.py", "/app/backend/tests/test_walkthru_v2_api.py", "/app/backend/tests/test_stripe_deposit.py", "/app/test_reports/pytest/pytest_results_iter4.xml"],
+  "action_items": [
+    "Fix RequireAuth to not trust persisted location.state.user; verify via /auth/me and clear router state on sign-out",
+    "Redirect to login screen when dashboard API calls return 401/403 (expired session)",
+    "Validate checkout origin_url against PUBLIC_APP_URL regardless of Origin header",
+    "Keep <Toaster> before <Routes> in App.js (do not revert again)",
+    "Remove hardcoded 'sk_test_emergent' fallback"
+  ],
+  "critical_code_review_comments": [
+    "Auth.jsx:48-49 initial user/checked from location.state bypasses server verification (stale history state)",
+    "auth/routes.py require_user: cookie-first token lookup ignores valid Bearer when cookie is stale",
+    "auth/routes.py create_session uses requests in to_thread - fine; allow-list check before user/session creation - good; 403 message leaks nothing sensitive",
+    "dashboard router-level Depends(require_user) correctly covers all /api dashboard + dev routes; portal/vapi/payments/stripe webhook stay public - correct"
+  ],
+  "updated_files": [
+    "/app/frontend/src/App.js (moved <Toaster> above <Routes> again)",
+    "/app/backend/tests/conftest.py (new: owner/outsider Mongo session fixtures)",
+    "/app/backend/tests/test_auth_google.py (new)",
+    "/app/backend/tests/test_walkthru_v2_api.py (Bearer auth in fixture)",
+    "/app/backend/tests/test_stripe_deposit.py (Bearer auth in fixture)"
+  ],
+  "success_rate": {"backend": "100% (51/51)", "frontend": "~85% (cancel-toast regression fixed by tester; stale-state auth bypass open)"},
+  "test_credentials": "No passwords. Sessions created directly in Mongo for divi@velvee.ai per /app/auth_testing.md; all test sessions and test users deleted afterwards (users and user_sessions collections empty).",
+  "seed_data_creation": "Created TEST_UI Lead via /dev; Dana Kim invited via Start agent; POST /api/dev/reset (authenticated) called at end, sample data reseeded.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "conftest.py creates a divi@velvee.ai user if missing and a test_session_<hex> token; tests send it as Bearer. Browser: add cookie session_token (domain walkthru.preview.emergentagent.com, secure, SameSite=None). To reproduce stale-state bug: on / without cookie run history.replaceState({usr:{user:{email:'x'}},key:'a',idx:0},'') then reload. Note users collection is empty after cleanup, so the real owner's first Google login will create the user fresh.",
+  "rca of the issue": "Cancel toast: App.js rendered <Toaster> after <Routes>; sonner only delivers to already-subscribed toasters, so PortalPage's mount-effect toast fired before Toaster subscribed. Fix: render Toaster first (applied, verified). Stale auth: RequireAuth seeds user/checked from location.state which React Router stores in history.state (survives reloads); signOut only clears component state, so reload re-reads the old user and skips /auth/me."
+}

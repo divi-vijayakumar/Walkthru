@@ -45,20 +45,27 @@ export const AuthCallback = () => {
 
 export const RequireAuth = ({ children }) => {
   const location = useLocation();
-  const [user, setUser] = useState(location.state?.user || null);
-  const [checked, setChecked] = useState(!!location.state?.user);
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [checked, setChecked] = useState(false);
   const [error, setError] = useState(location.state?.authError || null);
 
   useEffect(() => {
-    if (user) { return; }
     api.get("/auth/me")
       .then((r) => setUser(r.data))
       .catch((e) => { if (e?.response?.status === 403) setError(errorText(e)); })
       .finally(() => setChecked(true));
-  }, [user]);
+  }, []);
+
+  useEffect(() => {
+    const lost = (e) => { setUser(null); setError(e.detail === "Session expired" ? "Your session expired. Sign in again." : null); };
+    window.addEventListener("wt-auth-lost", lost);
+    return () => window.removeEventListener("wt-auth-lost", lost);
+  }, []);
 
   const signOut = async () => {
     await api.post("/auth/logout").catch(() => {});
+    navigate(location.pathname, { replace: true, state: null });
     setUser(null);
     setError(null);
   };

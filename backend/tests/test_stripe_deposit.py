@@ -10,8 +10,9 @@ API = f"{BASE_URL}/api"
 
 
 @pytest.fixture(scope="module")
-def s():
+def s(owner_token):
     sess = requests.Session()
+    sess.headers.update({"Authorization": f"Bearer {owner_token}"})
     sess.post(f"{API}/dev/reset")
     yield sess
     sess.post(f"{API}/dev/reset")

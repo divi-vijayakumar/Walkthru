@@ -11,13 +11,14 @@ function AppRouter() {
   if (!portal && location.hash?.includes("session_id=")) return <AuthCallback />;
   return (
     <>
+      {/* Toaster must mount before Routes so it subscribes before page mount effects call toast() */}
+      <Toaster theme="light" position={portal ? "top-center" : "bottom-right"} closeButton />
       <Routes>
         <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />
         <Route path="/dev" element={<RequireAuth><DevPage /></RequireAuth>} />
         <Route path="/w/:token" element={<PortalPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      <Toaster theme="light" position={portal ? "top-center" : "bottom-right"} closeButton />
     </>
   );
 }

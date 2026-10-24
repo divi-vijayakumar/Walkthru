@@ -26,6 +26,10 @@ Part B portal (/w/{token}): welcome, call screen (camera off by default, frames 
 - 2026-10-24: v1 MVP (superseded).
 - 2026-10-24: v2 full rebuild per designs: dashboard, /dev, portal, mock voice, Vapi adapter, tool + webhook endpoints, SMS simulate/allowlist.
 
+- 2026-10-24: Stripe Checkout (claimable test sandbox) for the 5% deposit: /api/portal/{token}/deposit/checkout, /api/payments/status/{id}, /api/stripe/webhook; simulated /deposit/pay removed (dev advance still simulates). Tax mode: Stripe calculates only, falls back to no tax until a business address is set in Stripe.
+- 2026-10-24: Emergent Google sign-in gates / and /dev and all contractor APIs; allow-list env OWNER_EMAILS=divi@velvee.ai; portal stays public.
+- Twilio: code ready (core/sms.py), waiting for TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, SMS_ALLOWLIST.
+
 ## Backlog
 - P1: Frame analysis to fill "What I'm seeing" chips (frames already stored)
 - P1: Sessions / Quotes / Payments / Rate card pages

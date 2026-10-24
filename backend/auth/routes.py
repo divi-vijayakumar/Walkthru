@@ -24,25 +24,29 @@ def public_user(user):
     return {k: user.get(k) for k in ("user_id", "email", "name", "picture")}
 
 
-async def require_user(request: Request) -> dict:
-    token = request.cookies.get("session_token")
-    auth = request.headers.get("authorization", "")
-    if not token and auth.lower().startswith("bearer "):
-        token = auth[7:].strip()
-    if not token:
-        raise HTTPException(401, "Sign in required")
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+async def session_user(token):
+    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0}) if token else None
     if not session:
-        raise HTTPException(401, "Sign in required")
+        return None, None
     expires_at = session["expires_at"]
     if isinstance(expires_at, str):
         expires_at = datetime.fromisoformat(expires_at)
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(401, "Session expired")
-    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    if not user or user["email"].lower() not in allowed_emails():
+        return None, "Session expired"
+    return await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0}), None
+
+
+async def require_user(request: Request) -> dict:
+    auth = request.headers.get("authorization", "")
+    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
+    user, problem = await session_user(request.cookies.get("session_token"))
+    if not user and bearer:
+        user, problem = await session_user(bearer)
+    if not user:
+        raise HTTPException(401, problem or "Sign in required")
+    if user["email"].lower() not in allowed_emails():
         raise HTTPException(403, "This account doesn't have access")
     return user
 
