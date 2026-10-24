@@ -7,7 +7,7 @@ export const showSmsToast = (sms, link, name) => {
     ? { label: "Copy link", onClick: () => copyText(link).then((ok) => ok && toast.success("Link copied")) }
     : undefined;
   if (sms.sent) {
-    toast.success(`SMS sent to ${name}`, { description: sms.to, action, duration: 8000 });
+    toast.success(`${sms.channel === "whatsapp" ? "WhatsApp" : "SMS"} sent to ${name}`, { description: sms.to, action, duration: 8000 });
   } else if (sms.simulated) {
     toast("Sent (simulated)", {
       description: `${sms.reason}. Message to ${name}: "${sms.body}"`,
@@ -15,6 +15,6 @@ export const showSmsToast = (sms, link, name) => {
       duration: 12000,
     });
   } else {
-    toast.error("SMS failed", { description: sms.error, action, duration: 12000 });
+    toast.error(`${sms.channel === "whatsapp" ? "WhatsApp" : "SMS"} failed`, { description: sms.error, action, duration: 12000 });
   }
 };
