@@ -12,6 +12,7 @@ from core.seed import seed  # noqa: E402
 from dashboard.routes import router as dashboard_router  # noqa: E402
 from portal.routes import router as portal_router  # noqa: E402
 from vapi.routes import router as vapi_router  # noqa: E402
+from payments.routes import router as payments_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
@@ -26,6 +27,7 @@ async def health():
 app.include_router(dashboard_router)
 app.include_router(portal_router)
 app.include_router(vapi_router)
+app.include_router(payments_router)
 
 app.add_middleware(
     CORSMiddleware,

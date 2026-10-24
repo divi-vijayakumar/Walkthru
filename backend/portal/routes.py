@@ -57,6 +57,7 @@ async def portal(token: str):
         "payment": await db.payments.find_one(active, {"_id": 0}, sort=[("created_at", -1)]),
         "session": await flow.active_session(lead["id"]),
         "voice": voice_config(),
+        "payments_test_mode": os.environ.get("STRIPE_MODE") == "test",
     }
 
 
@@ -105,7 +106,3 @@ async def contract_sign(token: str, body: Signature):
     result = await flow.sign_contract(await flow.lead_by_token(token), body.name)
     return {"payment": result["payment"]}
 
-
-@router.post("/{token}/deposit/pay")
-async def deposit_pay(token: str):
-    return {"payment": await flow.pay_deposit(await flow.lead_by_token(token))}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api, errorText } from "@/shared/api";
 import { createVoiceAdapter } from "@/portal/voice/voiceAdapter";
@@ -7,7 +7,7 @@ import { WelcomeScreen } from "@/portal/WelcomeScreen";
 import { CallScreen } from "@/portal/CallScreen";
 import { ChatScreen } from "@/portal/ChatScreen";
 import { QuoteScreen } from "@/portal/QuoteScreen";
-import { ClosedScreen, ContractScreen, DepositScreen, DoneScreen, FallbackScreen } from "@/portal/StageScreens";
+import { ClosedScreen, ConfirmingScreen, ContractScreen, DepositScreen, DoneScreen, FallbackScreen } from "@/portal/StageScreens";
 import { PortalShell } from "@/portal/PortalShell";
 
 const screenFor = (d) => {
@@ -25,6 +25,8 @@ export default function PortalPage() {
   const [call, setCall] = useState(null);
   const [signName, setSignName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const sessionId = params.get("session_id");
 
   const load = useCallback(() => api.get(`/portal/${token}`).then((r) => { setData(r.data); return r.data; }), [token]);
 
@@ -33,7 +35,34 @@ export default function PortalPage() {
     load().catch(() => setMissing(true));
   }, [load]);
 
-  const screen = call ? call.kind : data ? screenFor(data) : null;
+  useEffect(() => {
+    if (params.get("payment") === "cancelled") {
+      toast("Payment cancelled", { description: "Your deposit is still due whenever you're ready." });
+      setParams({}, { replace: true });
+    }
+  }, [params, setParams]);
+
+  useEffect(() => {
+    if (!sessionId) { return undefined; }
+    let tries = 0;
+    const id = setInterval(async () => {
+      tries += 1;
+      try {
+        const { data: s } = await api.get(`/payments/status/${sessionId}`);
+        if (s.payment_status === "paid" || s.status === "expired" || tries >= 20) {
+          clearInterval(id);
+          if (s.payment_status !== "paid") toast.error("We couldn't confirm the payment", { description: "If you were charged, Apex will follow up." });
+          await load();
+          setParams({}, { replace: true });
+        }
+      } catch {
+        if (tries >= 20) { clearInterval(id); setParams({}, { replace: true }); }
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [sessionId, load, setParams]);
+
+  const screen = call ? call.kind : data ? (sessionId && data.lead.status === "pending_deposit" ? "confirming" : screenFor(data)) : null;
 
   useEffect(() => {
     if (screen !== "fallback") { return undefined; }
@@ -72,7 +101,17 @@ export default function PortalPage() {
         onSign={(name) => act(() => api.post(`/portal/${token}/contract/sign`, { name }))} />;
     case "deposit":
       return <DepositScreen data={data} busy={busy}
-        onPay={() => act(async () => { await new Promise((r) => setTimeout(r, 1200)); await api.post(`/portal/${token}/deposit/pay`); })} />;
+        onPay={async () => {
+          setBusy(true);
+          try {
+            const { data: r } = await api.post(`/portal/${token}/deposit/checkout`, { origin_url: window.location.origin });
+            window.location.href = r.checkout_url;
+          } catch (e) {
+            toast.error(errorText(e, "Couldn't open checkout"));
+            setBusy(false);
+          }
+        }} />;
+    case "confirming": return <ConfirmingScreen data={data} />;
     case "done": return <DoneScreen data={data} />;
     case "fallback": return <FallbackScreen data={data} />;
     default: return <ClosedScreen data={data} />;

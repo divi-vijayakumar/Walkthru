@@ -162,11 +162,11 @@ async def sign_contract(lead, name):
     return {"payment": payment, "sms": sms}
 
 
-async def pay_deposit(lead):
+async def pay_deposit(lead, method="simulated", reference=None):
     if lead["status"] != "pending_deposit":
         raise HTTPException(400, "No deposit is due")
     await db.payments.update_one({"lead_id": lead["id"], "status": "pending", "void": {"$ne": True}},
-                                 {"$set": {"status": "paid", "paid_at": iso(), "method": "simulated"}})
+                                 {"$set": {"status": "paid", "paid_at": iso(), "method": method, "reference": reference}})
     await set_status(lead["id"], "deposit_received")
     return await db.payments.find_one({"lead_id": lead["id"], "status": "paid"}, {"_id": 0}, sort=[("paid_at", -1)])
 

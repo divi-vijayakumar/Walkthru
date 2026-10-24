@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Lock } from "lucide-react";
 import { money } from "@/shared/format";
 import { PortalHeader, PortalShell, PrimaryButton, Row, Steps } from "@/portal/PortalShell";
 import { LineItems } from "@/portal/QuoteScreen";
@@ -42,12 +42,30 @@ export const DepositScreen = ({ data, onPay, busy }) => (
       <p data-testid="deposit-amount" className="font-display text-[40px] font-bold leading-tight tabular">{money(data.payment?.amount)}</p>
       <Row label="Project total" value={money(data.quote?.total)} />
       <Row label="Deposit" value={`${data.quote?.deposit_pct}% of total`} />
-      <p className="mt-2 text-[13px] text-wt-muted">Simulated payment for this demo. No card is needed and no money moves.</p>
+      <p className="mt-2 flex items-center gap-1.5 text-[13px] text-wt-muted">
+        <Lock className="h-3.5 w-3.5" /> Secure checkout by Stripe. You'll come back here when it's done.
+      </p>
+      {data.payments_test_mode && (
+        <p data-testid="stripe-test-note" className="mt-2 rounded-lg bg-[#E9ECF1] px-3 py-2 text-[12px] text-wt-muted">
+          Test mode: pay with card 4242 4242 4242 4242, any future date and any CVC. No real money moves.
+        </p>
+      )}
     </section>
     <div className="mt-auto pt-8">
       <PrimaryButton data-testid="pay-deposit-btn" onClick={onPay} disabled={busy}>
-        {busy ? <><Loader2 className="h-5 w-5 animate-spin" /> Processing</> : `Pay deposit ${money(data.payment?.amount)}`}
+        {busy ? <><Loader2 className="h-5 w-5 animate-spin" /> Opening checkout</> : `Pay deposit ${money(data.payment?.amount)}`}
       </PrimaryButton>
+    </div>
+  </PortalShell>
+);
+
+export const ConfirmingScreen = ({ data }) => (
+  <PortalShell testId="confirming-payment-screen">
+    <PortalHeader contractor={data.contractor.name} />
+    <div className="mt-20 flex flex-col items-center text-center">
+      <Loader2 className="h-10 w-10 animate-spin text-wt-accent" />
+      <h1 className="mt-4 font-display text-[26px] font-bold">Confirming your payment...</h1>
+      <p className="mt-2 text-[15px] text-wt-muted">This takes a few seconds. Please keep this page open.</p>
     </div>
   </PortalShell>
 );
