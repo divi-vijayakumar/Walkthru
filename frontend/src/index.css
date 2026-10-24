@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Manrope:wght@400;500;600;700;800&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,46 +6,48 @@
 
 body {
     margin: 0;
-    font-family: "Plus Jakarta Sans", sans-serif;
+    font-family: "Manrope", sans-serif;
+    color: #0E1726;
+    background: #F5F6F8;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, .font-display {
-    font-family: "Outfit", sans-serif;
-}
-
-code, .font-mono {
-    font-family: "JetBrains Mono", monospace;
+    font-family: "Bricolage Grotesque", sans-serif;
 }
 
 ::selection {
-    background: rgba(249, 115, 22, 0.35);
-    color: #fff;
+    background: #FDEBDD;
+    color: #0E1726;
+}
+
+.tabular {
+    font-variant-numeric: tabular-nums;
 }
 
 @layer base {
     :root {
-        --background: 240 10% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 240 5.9% 10%;
-        --card-foreground: 0 0% 98%;
-        --popover: 240 5.9% 10%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 24.6 95% 53.1%;
+        --background: 220 14% 97%;
+        --foreground: 217 46% 10%;
+        --card: 0 0% 100%;
+        --card-foreground: 217 46% 10%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 217 46% 10%;
+        --primary: 17 88% 40%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 240 3.7% 15.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 240 3.7% 15.9%;
-        --muted-foreground: 240 5% 64.9%;
-        --accent: 240 3.7% 15.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 50%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 240 3.7% 15.9%;
-        --input: 240 3.7% 15.9%;
-        --ring: 24.6 95% 53.1%;
-        --radius: 0.625rem;
+        --secondary: 220 14% 96%;
+        --secondary-foreground: 217 46% 10%;
+        --muted: 220 14% 96%;
+        --muted-foreground: 218 13% 41%;
+        --accent: 25 89% 93%;
+        --accent-foreground: 17 88% 30%;
+        --destructive: 0 72% 45%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 216 22% 91%;
+        --input: 216 22% 91%;
+        --ring: 17 88% 40%;
+        --radius: 0.75rem;
     }
 }
 
@@ -64,14 +66,36 @@ code, .font-mono {
 }
 
 .wt-rise {
-    animation: wt-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: wt-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.wt-grid-bg {
-    background-image:
-        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-    background-size: 32px 32px;
+@keyframes pill-pop {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(194, 65, 12, 0.45); }
+    35% { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(194, 65, 12, 0.15); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(194, 65, 12, 0); }
+}
+
+.pill-pop {
+    animation: pill-pop 0.9s ease-out 2;
+}
+
+@keyframes eq {
+    0%, 100% { transform: scaleY(0.35); }
+    50% { transform: scaleY(1); }
+}
+
+.eq-bar {
+    transform-origin: bottom;
+    animation: eq 0.9s ease-in-out infinite;
+}
+
+@keyframes row-flash {
+    from { background-color: #FDEBDD; }
+    to { background-color: transparent; }
+}
+
+.row-flash {
+    animation: row-flash 2s ease-out;
 }
 
 @layer base {

@@ -1,20 +1,19 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
-import { AppLayout } from "@/components/AppLayout";
-import Dashboard from "@/pages/Dashboard";
-import LeadDetail from "@/pages/LeadDetail";
+import DashboardPage from "@/dashboard/DashboardPage";
+import DevPage from "@/dashboard/DevPage";
+import PortalPage from "@/portal/PortalPage";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/leads/:leadId" element={<LeadDetail />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/dev" element={<DevPage />} />
+        <Route path="/w/:token" element={<PortalPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      <Toaster theme="dark" position="bottom-right" />
+      <Toaster theme="light" position="top-right" closeButton />
     </BrowserRouter>
   );
 }

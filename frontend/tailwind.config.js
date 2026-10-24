@@ -14,7 +14,24 @@ module.exports = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)'
       },
+      fontFamily: {
+        display: ['"Bricolage Grotesque"', 'sans-serif'],
+        body: ['Manrope', 'sans-serif']
+      },
       colors: {
+        wt: {
+          ink: '#0E1726',
+          ground: '#F5F6F8',
+          line: '#E3E7ED',
+          muted: '#5B6577',
+          accent: '#C2410C',
+          accentDark: '#9A3412',
+          soft: '#FDEBDD',
+          teal: '#0F766E',
+          call: '#0B1220',
+          panel: '#121C2E',
+          panelLine: '#24314A'
+        },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {
