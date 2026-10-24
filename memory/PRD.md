@@ -31,7 +31,7 @@ Part B portal (/w/{token}): welcome, call screen (camera off by default, frames 
 - 2026-10-24: Twilio keys + SMS_ALLOWLIST (1 number) added; credentials verified (trial account, from-number on account). VAPI_PUBLIC_KEY + VAPI_ASSISTANT_ID added; VAPI_SERVER_SECRET added 2026-10-24 and verified (X-Vapi-Secret and Bearer accepted, missing secret rejected). VOICE_MODE switched to vapi 2026-10-24: real Vapi web call connected from the portal (captions arrived); full priced call on a phone not yet confirmed.
 - 2026-10-24: Security audit fixes: /api/vapi/* require VAPI_SERVER_SECRET (X-Vapi-Secret/Bearer), mock agent uses token-scoped /api/portal/{token}/agent/tools|end; tool calls only during an active call; random portal tokens; CORS no credentials with wildcard; Origin check blocks cross-site writes on dashboard APIs; frame (300/call, 600k) and caption (400 lines) caps.
 
-## Backlog
+- 2026-10-24: Twilio WhatsApp channel (env MESSAGE_CHANNEL=whatsapp, TWILIO_WHATSAPP_FROM sandbox number). Real lead added: Dhivya Vijayakumar (Thumbtack, Bathroom remodel, (646) 238-0338); WhatsApp invite delivered (Twilio status read). Do NOT run /api/dev/reset or bump SEED_VERSION without asking: it wipes real leads.
 - P1: Frame analysis to fill "What I'm seeing" chips (frames already stored)
 - P1: Sessions / Quotes / Payments / Rate card pages
 - P2: Real payments; contractor notifications on escalation

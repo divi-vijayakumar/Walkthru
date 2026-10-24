@@ -101,11 +101,13 @@ async def transcript(lead_id: str):
 # Demo helper endpoints used by /dev
 @router.get("/dev/config")
 async def dev_config():
-    twilio = all(os.environ.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM"))
+    channel = os.environ.get("MESSAGE_CHANNEL", "sms")
+    sender = "TWILIO_WHATSAPP_FROM" if channel == "whatsapp" else "TWILIO_FROM"
+    twilio = all(os.environ.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", sender))
     vapi = bool(os.environ.get("VAPI_PUBLIC_KEY") and os.environ.get("VAPI_ASSISTANT_ID"))
     allow = [x.strip() for x in os.environ.get("SMS_ALLOWLIST", "").split(",") if x.strip()]
     return {"voice_mode": "vapi" if os.environ.get("VOICE_MODE") == "vapi" and vapi else "mock",
-            "twilio_configured": twilio, "allowlist_count": len(allow),
+            "twilio_configured": twilio, "allowlist_count": len(allow), "channel": channel,
             "simulate_mode": os.environ.get("SIMULATE_MODE", "none")}
 
 

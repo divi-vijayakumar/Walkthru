@@ -100,7 +100,7 @@ export default function DevPage() {
       </div>
       {config && (
         <p data-testid="dev-config" className="mt-4 rounded-lg bg-white px-4 py-3 text-sm text-wt-muted">
-          Voice: <b>{config.voice_mode}</b> · SMS: <b>{config.twilio_configured ? `Twilio on, ${config.allowlist_count} allow-listed` : "simulated"}</b> · Tool simulate mode: <b>{config.simulate_mode}</b>
+          Voice: <b>{config.voice_mode}</b> · Messages ({config.channel === "whatsapp" ? "WhatsApp" : "SMS"}): <b>{config.twilio_configured ? `Twilio on, ${config.allowlist_count} allow-listed` : "simulated"}</b> · Tool simulate mode: <b>{config.simulate_mode}</b>
         </p>
       )}
       <h2 className="mb-2 mt-6 text-sm font-bold uppercase tracking-wide text-wt-muted">New lead</h2>

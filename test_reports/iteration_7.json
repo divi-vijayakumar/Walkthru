@@ -1,0 +1,24 @@
+{
+  "summary": "Tested the MESSAGE_CHANNEL=whatsapp change. Backend: new test file test_whatsapp_channel.py, 6 of 6 pass. It never resets data. POST /api/leads with (408) 555-0199 returns agent.sms with channel 'whatsapp', simulated true, sent false, reason 'Number not on SMS allowlist' and to '+14085550199', and the sms_log entry is written. Start-agent on seeded Dana moves her new -> invited with a simulated whatsapp message; Resend also simulates and reuses the same link. Dashboard shows Dhivya (Thumbtack, Bathroom remodel, (646) 238-0338) once. Portal GET for her token returns 200. /api/dashboard without auth returns 401. /dev/config shows vapi and 1 allow-listed number. UI: the dashboard loads with the auth cookie and Dhivya's row is correct. Clicking Start agent on Dana showed the 'Sent (simulated)' toast with Copy link and changed the status to Invited and the button to Resend; Resend showed the simulated toast again. /dev loads; creating TEST_UI Wa with (408) 555-0199 showed 'Sent (simulated)' plus 'Lead created'. Copy link showed 'Link copied' and the clipboard held the portal URL. NOTE: during testing Dhivya's status changed from Invited to Walkthru initiated. The real homeowner started a Vapi call at 22:36:07 from her own device (backend logs show captions posted to her token), and none of my tests started it. So I did NOT open her portal in the browser, to avoid touching a live paid call. I checked the same WelcomeScreen at 390px on seeded Luis's portal instead: 'Hi Luis, let's walk through your bathroom remodel.', no horizontal overflow, and Start talking is visible but was not clicked. The WelcomeScreen template renders first_name and ask lowercased, so Dhivya's link would show 'Hi Dhivya, let's walk through your bathroom remodel.' when her status allows the welcome screen. Cleanup done: TEST_ leads and their sms_log/call_sessions/quotes deleted, Dana restored from backup to 'new' with her sms_log removed, and the test session deleted. Dhivya's lead was never touched by tests, and her sms_log still holds only the 1 original entry. /dev/reset was not called.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "/api/dev/config", "issue": "twilio_configured only checks TWILIO_FROM, even when MESSAGE_CHANNEL=whatsapp, which uses TWILIO_WHATSAPP_FROM. It can misreport the setup. The /dev label also says 'SMS: Twilio on' instead of naming the channel."}
+  ]},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [
+    {"screen": "Simulated toast", "issues": ["The reason text says 'Number not on SMS allowlist' even in WhatsApp mode. This is cosmetic."]}
+  ]},
+  "test_report_links": ["/app/backend/tests/test_whatsapp_channel.py", "/app/test_reports/pytest/pytest_whatsapp.xml"],
+  "action_items": [
+    "Optional: make dev_config check the sender key for the active channel and show the channel on /dev",
+    "Optional: make the allowlist reason channel-neutral"
+  ],
+  "critical_code_review_comments": [
+    "sms.py's whatsapp branch is correct. It applies normalize() to TWILIO_WHATSAPP_FROM, so a value that already has the 'whatsapp:' prefix is also handled. Errors are caught and reported with simulated false.",
+    "Older test files (test_tool_call_gating.py and others) call /api/dev/reset in their fixtures. Running them now would delete Dhivya's real lead, so do not run the full tests/ folder while the real lead exists."
+  ],
+  "updated_files": ["/app/backend/tests/test_whatsapp_channel.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary only (TEST_ leads plus a Dana backup), all removed or restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run only tests/test_whatsapp_channel.py. It needs env TEST_SESSION_TOKEN, REACT_APP_BACKEND_URL, MONGO_URL and DB_NAME, and it modifies Dana (back up her doc first if you reuse it outside pytest; the fixture restores it). Dhivya (id ba5b915d-...) is real, was on a live Vapi call during this run, and must not be touched. The allowlist holds only 16462380338."
+}

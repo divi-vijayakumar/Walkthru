@@ -26,7 +26,7 @@ async def send_sms(lead: dict, body: str, kind: str) -> dict:
     if not (sid and token and sender):
         result["reason"] = "Twilio not configured"
     elif to not in allow:
-        result["reason"] = "Number not on SMS allowlist"
+        result["reason"] = "Number not on the allow-list"
     else:
         try:
             from twilio.rest import Client
