@@ -2,8 +2,8 @@ import { NavLink } from "react-router-dom";
 import { LayoutDashboard, HardHat } from "lucide-react";
 import { NAV } from "@/constants/testIds";
 
-export const Wordmark = () => (
-  <div data-testid={NAV.wordmark} className="flex items-center gap-2">
+export const Wordmark = ({ testId = NAV.wordmark }) => (
+  <div data-testid={testId} className="flex items-center gap-2">
     <span className="grid h-7 w-7 place-items-center rounded-md bg-orange-500 font-mono text-sm font-bold text-zinc-950">
       W
     </span>

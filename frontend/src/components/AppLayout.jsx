@@ -26,7 +26,7 @@ export const AppLayout = () => {
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-zinc-800 bg-[#0c0c0f] px-5 lg:hidden">
-          <Wordmark />
+          <Wordmark testId="mobile-header-wordmark" />
           <button data-testid={NAV.mobileMenu} onClick={() => setOpen(!open)} className="rounded-md p-2 text-zinc-300 hover:bg-zinc-800">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
