@@ -281,9 +281,9 @@ def test_unanswered_reasked_once_then_advances(s, L):
     assert f["state"] == "asked"
     r = turn(s, lid, "", {"sinks": "1"}, False)
     f = fact(s, lid, "replacing_vanity")
-    # iteration 16 spec: 'what goes in its place' is a must-ask (P0) fact and is never defaulted -> still asked, not priced
-    assert f.get("p0") and f["state"] in ("asked", "open") and f["value"] is None, f
-    assert r["status"] == "needs_info" and r["fact"] == "replacing_vanity", r
+    # must-ask (P0): never defaulted silently; after 3 unanswered asks the loop guard takes the usual answer, marked 'unsure'
+    assert f.get("p0") and f["state"] == "resolved" and f["basis"] == "unsure", f
+    assert r["fact"] != "replacing_vanity", r
 
 
 def test_not_sure_advances_immediately(s, L):

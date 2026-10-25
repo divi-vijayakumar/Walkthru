@@ -275,7 +275,7 @@ TASKS = {
                         [r"\bfaucets?\b"], ["plumbing"]),
     "bath_accessories": T("bathroom", "Bath accessories (towel bar, ring, paper holder)", [], [P(tiers=[150, 300, 550], label="per set")],
                           [r"\btowel (bars?|rings?|racks?)\b", r"\bpaper holders?\b", r"\baccessor(y|ies)\b"]),
-    "accent_wallpaper": T(None, "Accent wallpaper", ["wallpaper_area"], [P(tiers=[6, 9, 14], qty="wallpaper_area")], [r"\bwall ?paper\b", r"\baccent wall\b"]),
+    "accent_wallpaper": T(None, "Accent wallpaper", ["wallpaper_area"], [P(tiers=[6, 9, 14], qty="wallpaper_area")], [r"\bwall ?paper(s|ing|ed)?\b", r"\baccent wall\b"]),
     "exhaust_fan_lights": T("bathroom", "Exhaust fan and lights", ["fan_exists", "fan_vents_outside", "new_lights"],
                             [P(650, when={"fan_exists": ["no"]}, label="new fan"), P(400, when={"fan_exists": ["yes"], "fan_vents_outside": ["no"]}, label="duct to outside"),
                              P(225, qty="new_lights", label="light install"), P(tiers=[150, 300, 600], qty="new_lights", label="fixtures")],
@@ -397,7 +397,7 @@ RULES = [
     R("wall_new_floor", "flooring", ["wall_removal"], [], {"wall_floor_finish": ["new floor"]}, note="New flooring where the wall stood"),
     R("wall_ceiling", "ceiling_patch", ["wall_removal"], note="Every wall removal patches and paints the ceiling"),
 ]
-KB_VERSION = 3
+KB_VERSION = 4
 REPLACE = {"tasks": {"floor_tile", "wall_removal"}, "facts": {"floor_above", "floor_new"}}
 
 DRIVERS = [

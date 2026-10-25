@@ -229,6 +229,30 @@ class Itemizer:
     def groups(self):
         return {self.tasks[i["task_id"]].get("group") for i in self.live_items() if i["task_id"] in self.tasks} - {None}
 
+    def has_any(self, task_ids):
+        return any(self.has(t) for t in task_ids)
+
+    def drop_declined(self, answers):
+        """'No, nothing else' to 'floor tiles, wall tiles, or both?' drops that clarifying item instead of looping."""
+        for name, val in answers.items():
+            if not (isinstance(val, str) and DECLINE.match(val) and not val.strip().lower().startswith(("yes", "yeah"))):
+                continue
+            for f in self.facts_named(name):
+                it = next((i for i in self.live_items() if i["item_id"] == f.get("item_id")), None)
+                if it and self.tasks.get(it["task_id"], {}).get("split") and name in self.tasks[it["task_id"]]["split"]:
+                    it["status"] = "removed"
+
+    def stop_loops(self):
+        """A must-ask asked 3 times without a usable answer: drop a clarifying item, else take the usual answer."""
+        for f in self.p0_open():
+            if sum(a.get("channel") in ("ask", "measure", "show") for a in f["attempts"]) < MAX_P0_ASKS:
+                continue
+            it = next((i for i in self.live_items() if i["item_id"] == f.get("item_id")), None)
+            if it and self.tasks.get(it["task_id"], {}).get("split"):
+                it["status"] = "removed"
+            else:
+                self.resolve(f, self.kbf[f["name"]]["default"], "unsure", 0.5)
+
     def is_size(self, name):
         label = self.kbf[name]["label"]
         return any(u in label for u in ("sq ft", "linear ft", "(ft)"))
@@ -633,6 +657,9 @@ def overlap_drops(hits):
 
 
 LOCATION = re.compile(r"\b(by|near|next to|under|above|beside|behind|in front of|across from) the \w+", re.I)
+DECLINE = re.compile(r"^\s*(no|nope|none|nothing|neither|not|keep|same|yes|yeah)\b", re.I)
+TILE_TASKS = {"walk_in_shower", "floor_tile", "wall_tile", "backsplash"}
+MAX_P0_ASKS = 3
 LEAD_IN = re.compile(r"^(i want to|i'd like to|i would like to|we want to|we'd like to|can you|could you|please)\s+", re.I)
 
 
@@ -677,7 +704,7 @@ def keyword_tasks(said, room, tasks):
 def unmatched_clauses(said, room, tasks):
     """Clauses that name work but match no trigger (these go to the LLM, then to Apex)."""
     return [LEAD_IN.sub("", c)[:120] for c in split_clauses(said)
-            if len(c.split()) >= 3 and not PRICE_WORDS.search(c) and WORK_WORDS.search(c) and not clause_hits(c, room, tasks)[0]]
+            if len(c.split()) >= 3 and not PRICE_WORDS.search(c) and WORK_WORDS.search(c) and not DECLINE.match(c) and not clause_hits(c, room, tasks)[0]]
 
 
 async def get_session(lead):
@@ -729,13 +756,17 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
             f["skips"] = f.get("skips", 0) + 1
             if f["skips"] >= 2:
                 iz.advance(f, camera_on, "no answer")
+    iz.drop_declined(answers or {})
     new, custom = [], []
     if said.strip():
         groups = iz.groups()
         tids, vague = match_tasks(said, s["room"], iz.tasks)
         tids = [t for t in tids if (iz.tasks[t].get("group") or t) not in groups]
+        if "tile_work" in tids and (iz.has_any(TILE_TASKS) or set(tids) & TILE_TASKS):  # the tile is already covered by that job
+            tids.remove("tile_work")
         catalog = {k: v["label"] for k, v in iz.tasks.items() if not v.get("auto") and v["room"] in (None, s["room"])}
-        for c in unmatched_clauses(said, s["room"], iz.tasks):  # triggers missed this clause: ask the LLM, else Apex prices it
+        clauses = [] if answers else unmatched_clauses(said, s["room"], iz.tasks)  # an answer is not new work
+        for c in clauses:  # triggers missed this clause: ask the LLM, else Apex prices it
             ids = [t for t in await llm.map_tasks(c, s["room"], catalog) if t in catalog and t not in tids and (iz.tasks[t].get("group") or t) not in groups]
             ids = [t for t in ids if t not in overlap_drops(ids)]
             if ids:
@@ -758,6 +789,7 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
         new += iz.apply_splits(camera_on)
         new += iz.apply_rules(camera_on)
     iz.apply_implies()
+    iz.stop_loops()
     for it in new:
         if it.get("rule_id") and it["basis"] == "seen":
             src = next((f for n in next((r["facts"] for r in iz.rules if r["rule_id"] == it["rule_id"]), {}) for f in iz.facts_named(n)), None)
@@ -786,6 +818,8 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
             s["last_total"] = priced["total"]
             out.update(status="ok", next_text=f"{note} {tips}".strip(), **{k: priced[k] for k in ("total", "low", "high", "range_pct", "drivers", "deposit_percent", "deposit_amount", "assumptions", "if_not")})
             out["to_be_priced"] = [c["label"] for c in iz.live_items() if c.get("custom")]
+    s["log"] = (s.get("log") or [])[-59:] + [{"at": iso(), "said": said[:300], "answers": answers or {}, "wants_price": wants_price,
+                                               "status": out["status"], "fact": out["fact"], "next_text": out["next_text"][:300], "total": out.get("total")}]
     await save_session(s)
     out["insights"] = await claim_insights(lead["id"])
     return out, priced

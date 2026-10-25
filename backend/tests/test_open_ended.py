@@ -179,3 +179,26 @@ def test_camera_survey_fills_facts_and_suggests(s, made):
     out = turn(s, lead, "", {"tile_replacement": "vinyl plank"})
     assert "mirror replaced" in out["next_text"]
     assert "Replace mirror or medicine cabinet" not in [i["label"] for i in sess["items"]]
+
+
+
+def test_replay_1534_call_reaches_a_price(s, made):
+    """15:34 call: shower retile + niche + wallpaper + LED mirror looped on tile questions and never priced."""
+    lead = new_lead(s, made, "Bathroom remodel")
+    turn(s, lead, "One I want to change the tiling on the shower panels.")
+    turn(s, lead, "Want to replace this with something a little bit more warm. So retiling this space, I want a larger niche area here. "
+                  "I'm probably thinking about wallpapering this whole wall.")
+    turn(s, lead, "And removing the mirrors and replacing it with something that has LED lights in the mirror.")
+    labels = [i["label"] for i in s.get(f"{API}/itemizer/{lead['id']}").json()["items"] if i["status"] != "removed"]
+    assert "Accent wallpaper" in labels and "Replace mirror or medicine cabinet" in labels
+    assert "Tile work (floor or wall, to confirm)" not in labels
+    out = turn(s, lead, "No size change.", {"shower_size": "same"})
+    assert not any(lb.startswith("To be priced by Apex") for lb in out["new_items"])
+    asked = []
+    for _ in range(12):
+        if out["status"] == "ok":
+            break
+        asked.append(out["fact"])
+        out = turn(s, lead, "give me the quote", {out["fact"]: {"finish_level": "standard", "wallpaper_area": "10 feet"}.get(out["fact"], "premium dial")}, True)
+    assert out["status"] == "ok" and out["total"] > 0, (asked, out)
+    assert max(asked.count(f) for f in set(asked)) <= 3, asked
