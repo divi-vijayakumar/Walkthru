@@ -19,6 +19,12 @@ SAFE_PHONE = "(408) 555-0199"
 REAL = ("I want to replace the tiles with hardwood floors, swap the vanity for a new floating small vanity, "
         "replace the glass with a small elegant one, update the pendant, and paint the walls")
 GLASS = "replace the glass with a small elegant one"
+# iteration 16: the glass clause now maps to the KB job 'Remove glass shower panel'; an out-of-KB clause exercises the Apex line
+SAUNA = "build a small sauna in the corner"
+REAL_CUSTOM = REAL.replace(GLASS, SAUNA)
+P0_VALS = {"floor_new": "tile", "floor_area": "40", "wall_area": "300", "finish_level": "standard", "partition_kind": "glass",
+           "custom_out": "nothing", "custom_in": "a small sauna", "custom_size": "4 by 4 feet", "wall_replacement": "fully open",
+           "wall_length": "10", "wall_floor_finish": "patch", "replacing_vanity": "new", "new_vanity_mount": "floating", "new_vanity_sinks": "1"}
 G3 = {"finish_level": "standard", "water_damage": "no", "timeline": "in two months", "sinks": "1", "replacing_vanity": "open"}
 FLOOR_GOAL = ("Estimate the floor area in square feet. Use the tile count and tile size, and objects of known size "
               "(interior door 80 in tall, toilet about 28 in deep, vanity about 21 in deep). Reply with value and unit sq_ft.")
@@ -107,9 +113,11 @@ def test_fix1_question_budget(s, L):
     lid = L("real")["id"]
     reset(s, lid)
     r = turn(s, lid, REAL)
-    r, log = drive(s, lid, r)
+    r, log = drive(s, lid, r, P0_VALS)
     print(log, r)
-    asked = [x for x in log if x[1] in ("ask", "measure", "confirm")]
+    # iteration 16 spec: must-ask (P0) facts are always asked; the 5-question budget only covers the other facts
+    p0 = {f["name"] for f in sess(s, lid)["facts"] if f.get("p0")}
+    asked = [x for x in log if x[1] in ("ask", "measure", "confirm") and x[0] not in p0]
     assert r["status"] == "ok"
     assert sess(s, lid)["asked"] <= 5 and len(asked) <= 5, log
     assert "sinks" not in [f for f, _, _ in log]
@@ -124,6 +132,33 @@ def test_fix1_question_budget(s, L):
     assert "sinks" not in [f for f, _, _ in log], log
 
 
+# Iteration 16 regression: "replace the glass ..." in a bathroom must never turn into a Wall removal (+ engineer/permit) when the
+# homeowner answers "not sure" to the partition question (LLM maps the clause to glass_panel_removal AND partition_check)
+def test_glass_clause_never_adds_wall_removal(s, L):
+    lid = L("glass")["id"]
+    reset(s, lid)
+    r = turn(s, lid, REAL)
+    r, log = drive(s, lid, r)
+    labels = [i["label"] for i in sess(s, lid)["items"] if i["status"] != "removed"]
+    print(log, labels)
+    assert "Wall removal" not in labels, labels
+    assert "Patch floor where the wall stood" not in labels, labels
+
+
+# Iteration 16 regression: ONE "not sure" to a must-ask fact must re-ask it (only the 2nd takes the usual answer).
+# RCA: turn() runs apply_answers 3x per turn, so f["unknowns"] hits 3 on the first "not sure".
+def test_p0_single_not_sure_reasks(s, L):
+    lid = L("p0unsure")["id"]
+    reset(s, lid)
+    r = turn(s, lid, "I want to take out the tiles")
+    assert r["fact"] == "tile_where" or r["fact"] in ("tile_replacement",), r
+    first = r["fact"]
+    turn(s, lid, "", {first: "not sure"})
+    f = facts(s, lid, first)[0]
+    print(f)
+    assert f["state"] != "resolved" and f.get("unknowns") == 1, f
+
+
 # FIX 2 price on request
 @pytest.mark.parametrize("said,flag", [("", True), ("how much would that be", False), ("can I get a quote", False), ("what's the price", False)])
 def test_fix2_wants_price(s, L, said, flag):
@@ -132,6 +167,14 @@ def test_fix2_wants_price(s, L, said, flag):
     r = turn(s, lid, "I want a new floor and paint the walls")
     assert r["status"] == "needs_info"
     r = turn(s, lid, said, {}, False, flag)
+    print(r)
+    # iteration 16 spec: with must-ask facts open, a price request asks the most important one first (prefixed)
+    assert r["status"] == "needs_info" and r["next_action"] in ("ask", "measure"), r
+    assert r["next_text"].startswith("Just so the number means something: "), r
+    for _ in range(10):  # answer only the must-ask facts, then ask for the price again
+        if r["status"] == "ok":
+            break
+        r = turn(s, lid, said, {r["fact"]: P0_VALS.get(r["fact"], "not sure")}, False, flag)
     print(r)
     assert r["next_action"] == "price" and r["status"] == "ok" and r["assumptions"] and r["total"] > 0
 
@@ -156,7 +199,7 @@ def test_fix4_no_duplicates(s, L):
     labels = [i["label"] for i in sess(s, lid)["items"] if i["status"] != "removed"]
     print(labels)
     assert labels.count("Exhaust fan and lights") == 1 and "Lighting and ceiling fans" not in labels
-    assert "Floor tile" in labels and "Flooring" not in labels
+    assert "Bathroom floor" in labels and "Flooring" not in labels  # iteration 16 label
     turn(s, lid, "also add some recessed lighting and hardwood floors")
     labels2 = [i["label"] for i in sess(s, lid)["items"] if i["status"] != "removed"]
     print(labels2)
@@ -167,11 +210,12 @@ def test_fix4_no_duplicates(s, L):
 def test_fix5_custom_line(s, L):
     lid = L("custom")["id"]
     reset(s, lid)
-    r = turn(s, lid, REAL)
+    r = turn(s, lid, REAL_CUSTOM)
     print(r)
-    label = f"To be priced by Apex: {GLASS}"
+    label = f"To be priced by Apex: {SAUNA}"
     assert label in r["new_items"]
-    assert f"I've noted {GLASS} for Apex Remodeling to price" in r["next_text"]
+    assert f"I've noted {SAUNA} for Apex Remodeling to price" in r["next_text"]
+    r, _ = drive(s, lid, r, P0_VALS)  # iteration 16: answer the must-ask facts (incl. the four custom questions) first
     r = turn(s, lid, "", {}, False, True)
     line = [ln for ln in r["lines"] if ln["label"] == label]
     assert line and line[0]["amount"] is None
@@ -318,7 +362,7 @@ def test_fix10_cant_answer(s, L):
 def test_fix11_no_carpet_in_bath(s, L):
     lid = L("opts")["id"]
     texts = []
-    for said in (REAL, "I want new carpet", "new flooring", "I want new floors"):
+    for said in (REAL_CUSTOM, "I want new carpet", "new flooring", "I want new floors"):
         reset(s, lid)
         r = turn(s, lid, said)
         r, log = drive(s, lid, r)
@@ -327,7 +371,7 @@ def test_fix11_no_carpet_in_bath(s, L):
     assert not any("carpet" in t.lower() for t in texts)
     kb = s.get(f"{API}/kb").json()["facts"]
     fn = next(f for f in kb if f["fact_id"] == "floor_new")
-    assert "tile, vinyl plank or engineered wood" in fn["room_questions"]["bathroom"]
+    assert "new tile, vinyl plank" in fn["room_questions"]["bathroom"] and "carpet" not in fn["room_questions"]["bathroom"].lower()  # iteration 16 wording
 
 
 # FIX 12 insights exactly once (portal poll ?live=1 vs update_scope)

@@ -64,7 +64,8 @@ def reset(s, lid):
 
 def gate3_neither(s, lid):
     reset(s, lid)
-    r1 = turn(s, lid, "I want this sink gone", G3_ANS, False)
+    # iteration 16: Remove vanity carries the camera-only sink_type fact; answer it so only vanity_mount is assumed
+    r1 = turn(s, lid, "I want this sink gone", dict(G3_ANS, sink_type="vanity cabinet"), False)
     goal(s, lid, "vanity_mount@it1", "not_found")
     return r1, turn(s, lid, "", {"vanity_mount": "not sure"}, False)
 
@@ -123,7 +124,8 @@ def test_gate3_show_when_camera_on(s, leads):
     # camera goal fails while Alex is still asking other things -> show request next
     turn(s, lid, "I want this sink gone", {}, True)
     goal(s, lid, "vanity_mount@it1", "not_found")
-    r = turn(s, lid, "", {"replacing_vanity": "open"}, True)
+    # iteration 16 spec: finish level is a must-ask (P0) for every job, so it is answered first; then the show request
+    r = turn(s, lid, "", {"replacing_vanity": "open", "finish_level": "standard"}, True)
     print(r)
     assert r["next_action"] == "show" and r["next_text"] == SHOW_Q and r["fact"] == "vanity_mount"
 
@@ -146,7 +148,7 @@ def test_bathroom_floor_single_task(s, leads):
     lid = _db.leads.find_one({"name": "TEST_Itemizer bath"})["id"]
     reset(s, lid)
     r = turn(s, lid, "I want a new tile floor", {}, False)
-    assert r["new_items"] == ["Floor tile"], r["new_items"]
+    assert r["new_items"] == ["Bathroom floor"], r["new_items"]  # iteration 16 label
 
 
 def test_steps_answer_converted(s, leads):
@@ -188,6 +190,7 @@ def test_gate3_camera_answers_no_assumption_range10(s, leads):
     reset(s, lid)
     turn(s, lid, "I want this sink gone", G3_ANS, True)
     goal(s, lid, "vanity_mount@it1", "met", 0.9, "floor")
+    goal(s, lid, "sink_type@bathroom", "met", 0.9, "vanity cabinet")  # iteration 16: new camera-only sink_type fact
     r = turn(s, lid, "", {}, True)
     print(r)
     assert r["status"] == "ok" and r["assumptions"] == []

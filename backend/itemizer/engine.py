@@ -288,7 +288,7 @@ class Itemizer:
             task = self.tasks.get(it["task_id"]) or {}
             for name, targets in (task.get("split") or {}).items():
                 f = next((x for x in self.facts_named(name) if x.get("item_id") == it["item_id"] and x["state"] == "resolved"), None)
-                if not f or str(f["value"]) not in targets:
+                if not f or f["basis"] == "unsure" or str(f["value"]) not in targets:
                     continue
                 it["status"] = "removed"
                 added += [n for t in targets[str(f["value"])] if (n := self.add_item(t, it["said"], camera_on, basis=f["basis"], evidence=f.get("evidence")))]
@@ -419,7 +419,7 @@ class Itemizer:
         d = self.kbf[f["name"]]
         q = (d.get("room_questions") or {}).get(f["room"]) or d["question"]
         it = next((i for i in self.s["items"] if i["item_id"] == f.get("item_id") and i.get("custom")), None)
-        return f"About the {it['said']}: {q[:1].lower()}{q[1:]}" if it else q
+        return f"About \"{it['said']}\": {q[:1].lower()}{q[1:]}" if it else q
 
     def ask_p0(self, f, camera_on, wants_price):
         d, ch = self.kbf[f["name"]], self.channel(f)
@@ -564,7 +564,7 @@ class Itemizer:
             d = int(round(total * disc / 100.0))
             lines.append({"key": "discount", "label": f"Discount ({disc}%)", "amount": -d, "basis": "said", "evidence": {}})
             total -= d
-        assumed = [f for f in self.s["facts"] if f["state"] == "assumed"]
+        assumed = [f for f in self.s["facts"] if f["state"] == "assumed" and self.kbf[f["name"]].get("priority") != 2]
         pct = min(25, 10 + 5 * len(assumed)) / 100.0
         low, high = min(r500(total * (1 - pct)), total), max(r500(total * (1 + pct)), total)
         notes = [self.note(f) for f in assumed]
@@ -573,7 +573,8 @@ class Itemizer:
         notes += [f"{i['label']} (not in this total)" for i in self.live_items() if i.get("custom")]
         return {"lines": lines, "total": int(total), "low": low, "high": high, "range_pct": int(pct * 100),
                 "assumptions": notes,
-                "drivers": [i["label"] for i in self.live_items()][:3], "deposit_percent": DEPOSIT_PCT,
+                "drivers": [x["label"] for x in sorted([x for x in lines if x.get("amount") and x["key"].startswith("it")], key=lambda x: -x["amount"])][:3],
+                "deposit_percent": DEPOSIT_PCT,
                 "deposit_amount": int(round(total * DEPOSIT_PCT / 100.0))}
 
     def scenario(self, contractor, priced):
@@ -619,17 +620,29 @@ def split_clauses(said):
     return [c for c in out if c]
 
 
+def overlap_drops(hits):
+    """Task ids that a more specific match in the same clause overrides."""
+    h, drop = set(hits), set()
+    if {"floor_tile", "wall_tile", "walk_in_shower", "backsplash", "flooring"} & h:
+        drop.add("tile_work")
+    if {"wall_tile", "accent_wallpaper", "partition_check", "glass_panel_removal"} & h:
+        drop.add("wall_removal")
+    if "glass_panel_removal" in h:
+        drop.add("partition_check")
+    return drop
+
+
+LOCATION = re.compile(r"\b(by|near|next to|under|above|beside|behind|in front of|across from) the \w+", re.I)
+LEAD_IN = re.compile(r"^(i want to|i'd like to|i would like to|we want to|we'd like to|can you|could you|please)\s+", re.I)
+
+
 def clause_hits(clause, room, tasks):
     """Trigger matches for one clause; returns (task ids, the clause if it vaguely meant the sink area)."""
-    t = clause.lower()
+    t = LOCATION.sub(" ", clause.lower())  # 'a sauna by the window' is not window work
     hits = [tid for tid, task in tasks.items() if not task.get("auto") and task["room"] in (None, room) and any(re.search(p, t) for p in task["triggers"])]
-    drop = set()
+    drop = overlap_drops(hits)
     if "remove_vanity" in hits and "new_vanity" in hits and not re.search(r"\b(new|floating|swap|for an?|with an?)\b", t):
         drop.add("new_vanity")
-    if {"floor_tile", "wall_tile", "walk_in_shower", "backsplash", "flooring"} & set(hits):
-        drop.add("tile_work")
-    if {"wall_tile", "accent_wallpaper", "partition_check", "glass_panel_removal"} & set(hits):
-        drop.add("wall_removal")
     if "vanity_light" in hits and not re.search(r"\b(fan|exhaust)\b", t):
         drop.add("exhaust_fan_lights")
     hits = [h for h in hits if h not in drop]
@@ -663,7 +676,7 @@ def keyword_tasks(said, room, tasks):
 
 def unmatched_clauses(said, room, tasks):
     """Clauses that name work but match no trigger (these go to the LLM, then to Apex)."""
-    return [c[:120] for c in split_clauses(said)
+    return [LEAD_IN.sub("", c)[:120] for c in split_clauses(said)
             if len(c.split()) >= 3 and not PRICE_WORDS.search(c) and WORK_WORDS.search(c) and not clause_hits(c, room, tasks)[0]]
 
 
@@ -724,6 +737,7 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
         catalog = {k: v["label"] for k, v in iz.tasks.items() if not v.get("auto") and v["room"] in (None, s["room"])}
         for c in unmatched_clauses(said, s["room"], iz.tasks):  # triggers missed this clause: ask the LLM, else Apex prices it
             ids = [t for t in await llm.map_tasks(c, s["room"], catalog) if t in catalog and t not in tids and (iz.tasks[t].get("group") or t) not in groups]
+            ids = [t for t in ids if t not in overlap_drops(ids)]
             if ids:
                 tids += ids
             elif (it := iz.add_custom(c, camera_on)):
@@ -738,8 +752,9 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
                 iz.open_fact("vanity_plan", it, camera_on, True)
         if not new and not custom and not tids and not answers and not wants_price and not iz.live_items() and WORK_WORDS.search(said):
             custom = [it for it in [iz.add_custom(said.strip()[:120], camera_on)] if it]
-    for _ in range(3):
-        iz.apply_answers(answers, camera_on)
+    for n in range(3):
+        if n == 0:
+            iz.apply_answers(answers, camera_on)
         new += iz.apply_splits(camera_on)
         new += iz.apply_rules(camera_on)
     iz.apply_implies()
@@ -912,7 +927,7 @@ async def price_custom(lead, item_id, label, tiers, words):
     it.update(task_id=tid, label=label, custom=False, priced_from_custom=True)
     contractor = await db.contractors.find_one({"id": lead["contractor_id"]}, {"_id": 0})
     iz = Itemizer(s, kb, contractor)
-    priced = iz.price(contractor) if iz.priced_items() else None
+    priced = iz.price(contractor) if iz.ready() else None  # other jobs' must-ask facts still open: no quote yet
     if priced and priced["total"] > 0:
         priced["if_not"] = iz.scenario(contractor, priced)
         s["last_total"] = priced["total"]

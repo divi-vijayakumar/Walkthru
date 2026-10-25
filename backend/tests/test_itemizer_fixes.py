@@ -148,7 +148,8 @@ def test_counter_area_steps_sane(s, L):
 def test_rule_ids_unique(s, L):
     rules = s.get(f"{API}/kb").json()["rules"]
     ids = [r["rule_id"] for r in rules]
-    assert len(ids) == 41 and len(set(ids)) == 41
+    # iteration 16: KB_VERSION 3 adds the wall-removal / open-ended rules (41 -> 50)
+    assert len(ids) == 50 and len(set(ids)) == 50
     assert all(r["rule_id"].startswith("driver_") for r in rules if r["kind"] == "driver")
     assert all(r["rule_id"].startswith("measure_") for r in rules if r["kind"] == "measure_method")
 
@@ -213,7 +214,7 @@ def test_goal_after_price_new_version(s, L):
     lid = lead["id"]
     reset(s, lid)
     _db.quotes.delete_many({"lead_id": lid})
-    turn(s, lid, "I want this sink gone", G3_ANS, False)
+    turn(s, lid, "I want this sink gone", dict(G3_ANS, sink_type="vanity cabinet"), False)  # iteration 16: new sink_type fact
     goal(s, lid, "vanity_mount@it1", "not_found")
     r = turn(s, lid, "", {"vanity_mount": "not sure"}, False)
     assert r["status"] == "ok"
@@ -242,7 +243,7 @@ def test_goal_unknown_fact_404(s, L):
 def test_dedupe_assumption_change_new_version(L):
     lead = L("vapi", "Bathroom remodel")
     assert requests.post(f"{API}/portal/{lead['portal_token']}/call/start").status_code == 200
-    ans = dict(G3_ANS, water_damage="not sure", vanity_mount="floor")
+    ans = dict(G3_ANS, water_damage="not sure", vanity_mount="floor", sink_type="vanity cabinet")  # iteration 16: new sink_type fact
     a = tool(lead, "update_scope", {"said": "I want this sink gone", "answers": ans})
     for _ in range(5):
         if a["status"] == "ok":
@@ -278,19 +279,24 @@ def test_unanswered_reasked_once_then_advances(s, L):
     assert r["fact"] == "replacing_vanity" and r["next_text"] == VANITY_Q, r
     f = fact(s, lid, "replacing_vanity")
     assert f["state"] == "asked"
-    turn(s, lid, "", {"sinks": "1"}, False)
+    r = turn(s, lid, "", {"sinks": "1"}, False)
     f = fact(s, lid, "replacing_vanity")
-    # iteration 11: assumed 'new' adds New vanity, whose implies then resolve replacing_vanity = new
-    assert f["state"] in ("assumed", "resolved") and f["value"] == "new", f
+    # iteration 16 spec: 'what goes in its place' is a must-ask (P0) fact and is never defaulted -> still asked, not priced
+    assert f.get("p0") and f["state"] in ("asked", "open") and f["value"] is None, f
+    assert r["status"] == "needs_info" and r["fact"] == "replacing_vanity", r
 
 
 def test_not_sure_advances_immediately(s, L):
+    """replacing_vanity is now must-ask (P0): one 'not sure' re-asks, the second takes the usual answer as theirs."""
     lid = L("bath", "Bathroom remodel")["id"]
     reset(s, lid)
     turn(s, lid, "I want this sink gone", {}, False)
     turn(s, lid, "", {"replacing_vanity": "not sure"}, False)
     f = fact(s, lid, "replacing_vanity")
-    assert f["state"] in ("assumed", "resolved") and f["value"] == "new" and f["attempts"][-1].get("result") == "unknown", f
+    assert f["state"] in ("open", "asked") and f.get("unknowns") == 1, f
+    turn(s, lid, "", {"replacing_vanity": "not sure"}, False)
+    f = fact(s, lid, "replacing_vanity")
+    assert f["state"] == "resolved" and f["value"] == "new" and f["basis"] == "unsure", f
 
 
 # FIX 8

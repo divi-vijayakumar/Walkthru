@@ -51,7 +51,7 @@ export const CustomLine = ({ leadId, line, onPriced }) => {
       ) : (
         <div data-testid={`price-custom-form-${id}`} className="mt-2 space-y-2 rounded-xl bg-wt-ground p-3">
           <TextField label="Name on the quote" value={label} onChange={setLabel} testId={`price-custom-label-${id}`} maxLength={80} />
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-2">
             {TIERS.map((t, k) => <MoneyInput key={t} label={t} value={tiers[k]} testId={`price-custom-tier-${k}-${id}`} onChange={(v) => setTiers((x) => x.map((y, j) => (j === k ? v : y)))} />)}
           </div>
           <TextField label="Words that should match it next time (comma separated)" value={match} onChange={setMatch} testId={`price-custom-match-${id}`} />
