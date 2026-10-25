@@ -65,7 +65,7 @@ def test_maya_in_call_tools_work(s):
     res = r.json()["results"][0]
     assert "result" in res, res
     out = json.loads(res["result"])
-    assert out.get("say") or out.get("question") or out.get("version"), out
+    assert out.get("status") and (out.get("next_text") or out.get("say") or out.get("version")), out
     assert len(quotes(l["id"])) >= n
 
 

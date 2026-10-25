@@ -9,6 +9,7 @@ logger = logging.getLogger("seed")
 SEED_VERSION = 5
 COLLECTIONS = ["contractors", "leads", "call_sessions", "quotes", "contracts", "payments", "pricing_states",
                "followups", "frames", "sms_log", "scopes", "messages"]
+SAMPLE_EXTRA = ["itemizer_sessions", "itemizer_goals", "itemizer_insights", "media", "payment_transactions"]
 
 # name, phone, source, ask, status, seconds-ago per step, quote spec
 LEADS = [
@@ -116,7 +117,11 @@ async def reset_seed():
     """Rebuild the sample leads only; real leads and their data are never touched."""
     sample = {"$regex": "^lead-"}
     await db.leads.delete_many({"id": sample})
-    for c in COLLECTIONS:
+    sessions = [d["id"] async for d in db.call_sessions.find({"lead_id": sample}, {"id": 1})]
+    goals = [d["goal_id"] async for d in db.percia_goals.find({"session_id": {"$in": sessions}}, {"goal_id": 1})]
+    await db.percia_goals.delete_many({"goal_id": {"$in": goals}})
+    await db.percia_frames.delete_many({"goal_id": {"$in": goals}})
+    for c in COLLECTIONS + SAMPLE_EXTRA:
         if c not in ("contractors", "leads"):
             await db[c].delete_many({"lead_id": sample})
     await db.contractors.update_one({"id": CONTRACTOR_ID}, {"$setOnInsert": {

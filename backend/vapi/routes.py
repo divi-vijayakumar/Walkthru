@@ -227,7 +227,7 @@ async def save_report(lead, msg):
     """Keep Vapi's transcript, recording and summary on the call, even if the portal already ended it."""
     from calls.routes import copy_recording
     call_id = (msg.get("call") or {}).get("id")
-    s = call_id and await db.call_sessions.find_one({"vapi_call_id": call_id}, {"_id": 0, "id": 1, "ended_at": 1})
+    s = call_id and await db.call_sessions.find_one({"vapi_call_id": call_id, "lead_id": lead["id"]}, {"_id": 0, "id": 1, "ended_at": 1})
     s = s or await db.call_sessions.find_one({"lead_id": lead["id"], "vapi_call_id": None},
                                              {"_id": 0, "id": 1, "ended_at": 1}, sort=[("started_at", -1)])
     if not s:

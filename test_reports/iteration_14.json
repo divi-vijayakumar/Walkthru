@@ -1,0 +1,38 @@
+{
+  "summary": "Verified the /dev/reset fix: it is now non-destructive. I backed up the real leads with mongoexport before testing and diffed them afterwards. Dhivya Vijayakumar and Sathish Rajasekar were byte-identical after several resets, and both are still status=invited with restored=true. A TEST_ lead with an open call session survived the reset, and the 9 sample leads were rebuilt. New file tests/test_reset_preserves_real.py: 7/7 pass. It covers the reset preserving real and TEST_ leads, real leads sorted before sample leads in the dashboard, the seeded Maya ended_at not being in the future, link_vapi_call returning {linked:false} when another lead's session owns the call id (that session's vapi_call_id stays unset), /vapi/tools and webhook status-update without lead_token never linking, and status-update with lead_token linking. Regression run of test_tool_call_gating + test_vapi_call_link + test_round1_calls + the new file: 33/35 under the default xdist run. Serial (-o addopts=''): test_round1_calls passes; test_tool_call_gating::test_maya_in_call_tools_work still fails. Frontend smoke: dashboard lists Dhivya and Sathish first, then the samples. The Sessions page loads 7 seeded sessions with realistic durations. No page errors. All TEST_ data and the UI test session were cleaned up (0 left).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "tests/test_tool_call_gating.py::test_maya_in_call_tools_work", "issue": "STILL FAILS (deterministic). update_scope returns {status:'needs_info', next_action:'ask', next_text:'...', fact:'...'}, but the test asserts out.say or out.question or out.version. Accept next_text/status too, or have update_scope include 'say'."},
+      {"endpoint": "core/seed.py reset_seed COLLECTIONS", "issue": "Sample-lead data stored outside COLLECTIONS is never cleared on reset: itemizer_sessions, itemizer_goals, itemizer_insights, media, payment_transactions and percia_*. After the reset an itemizer_session for lead-maya still exists and carries over between runs; the fact asked changed from finish_level to water_damage across runs. Add these collections to the lead_id ^lead- cleanup."},
+      {"endpoint": "tests/test_round1_calls.py::TestDashboard::test_week_counts_match_status_history", "issue": "Flaky under the default xdist (-n 2) run: it races with test_tool_call_gating's /dev/reset, which rebuilds sample leads with new timestamps mid-test. Fails with AssertionError: invited. Passes serially. Failure rate 1 of 2 runs."},
+      {"endpoint": "vapi/routes.py save_report", "issue": "The session is looked up by vapi_call_id without a lead_id filter. A report with lead_token A and a call id owned by lead B would end A's call and write onto B's session. Scope it with lead_id, as link_vapi_call does."},
+      {"endpoint": "vapi/routes.py resolve_lead", "issue": "Without lead_token, tool-calls still fall back to the most recent real walkthru_initiated lead. Linking is now gated, but tools can still mutate that lead's quote and followups. Consider requiring lead_token for tools."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Leads header", "issues": ["The 'Sample data' badge still shows although real leads are listed (minor)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_reset_preserves_real.py", "/app/test_reports/pytest/pytest_results_iter14.xml"],
+  "action_items": [
+    "Update test_maya_in_call_tools_work to match the update_scope output (next_text/status), or return 'say'.",
+    "Add itemizer_sessions/goals/insights, media, payment_transactions and percia_* to the reset_seed lead_id ^lead- cleanup.",
+    "Make test_round1_calls week-count test robust to concurrent /dev/reset, or run reset-calling modules in one xdist group.",
+    "Scope save_report's vapi_call_id lookup to lead_id."
+  ],
+  "critical_code_review_comments": [
+    "reset_seed now deletes only leads with id ^lead- and lead_id ^lead- records: correct, and the real leads are safe.",
+    "link_vapi_call: the existence check is now lead-scoped. It returns true only if this lead's own session already has the id.",
+    "Tools and webhook status-update link only when lead_token is present: verified."
+  ],
+  "updated_files": ["/app/backend/tests/test_reset_preserves_real.py"],
+  "success_rate": {"backend": "94% (33/35 in xdist run; 1 deterministic stale test, 1 flaky race)", "frontend": "100%"},
+  "seed_data_creation": "Only TEST_ leads created through the API and Mongo test sessions; all deleted. Real leads verified unchanged with a mongoexport diff.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "/dev/reset is now safe for real leads. Back up the real leads first anyway (mongoexport, query id not ^lead-). pytest.ini forces -n 2. For a serial run use -o addopts=''. Never press Simulate and never message Dhivya or Sathish."
+}
