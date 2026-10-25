@@ -53,6 +53,7 @@ export const DepositScreen = ({ data, onPay, busy }) => (
         </p>
       )}
     </section>
+    {data.quote && <QuotePdfLink className="mt-3" />}
     <div className="mt-auto pt-8">
       <PrimaryButton data-testid="pay-deposit-btn" onClick={onPay} disabled={busy}>
         {busy ? <><Loader2 className="h-5 w-5 animate-spin" /> Opening checkout</> : `Pay deposit ${money(data.payment?.amount)}`}

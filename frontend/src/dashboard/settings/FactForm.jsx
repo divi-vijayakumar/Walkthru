@@ -12,7 +12,8 @@ export const FactForm = ({ doc, onSave }) => {
   const id = doc.fact_id;
   const save = async () => {
     setBusy(true);
-    await onSave({ ...doc, label: f.label.trim(), question: f.question.trim(), show: f.show.trim(), default: f.default,
+    await onSave({ ...doc, label: f.label.trim(), question: f.question.trim(), show: f.show.trim(),
+      default: typeof doc.default === "number" && f.default !== "" && Number.isFinite(Number(f.default)) ? Number(f.default) : f.default,
       priority: f.priority === "" ? null : Number(f.priority) });
     setBusy(false);
   };

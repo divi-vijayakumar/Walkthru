@@ -24,6 +24,10 @@ export default function QuotesPage() {
   const [filter, setFilter] = useState("all");
   const [latestOnly, setLatestOnly] = useState(true);
   const [open, setOpen] = useState(null);
+  const pick = (id) => {
+    setOpen(id);
+    if (window.innerWidth < 1280) setTimeout(() => document.getElementById("quote-aside")?.scrollIntoView({ behavior: "smooth" }), 50);
+  };
   useEffect(() => {
     document.title = "Quotes · Walkthru";
     api.get("/quotes").then((r) => setData(r.data)).catch(() => setData({ quotes: [], totals: {} }));
@@ -49,12 +53,12 @@ export default function QuotesPage() {
           <table className="w-full min-w-[640px] text-left text-[14px]">
             <thead className="text-[13px] text-wt-muted"><tr>{["Lead", "Version", "Status", "Total", "Range", "Date"].map((h) => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead>
             <tbody>
-              {rows.map((q) => <QuoteRow key={q.id} q={q} active={open === q.id} onOpen={setOpen} />)}
+              {rows.map((q) => <QuoteRow key={q.id} q={q} active={open === q.id} onOpen={pick} />)}
               {data && rows.length === 0 && <tr><td colSpan={6} data-testid="quotes-empty" className="px-4 py-6 text-wt-muted">No quotes here yet.</td></tr>}
             </tbody>
           </table>
         </div>
-        <aside className="rounded-2xl border border-wt-line bg-white p-4">
+        <aside id="quote-aside" className="rounded-2xl border border-wt-line bg-white p-4">
           {open ? <QuoteDetail key={open} quoteId={open} onPick={setOpen} /> : <p className="text-[14px] text-wt-muted">Pick a quote to see its lines and download the PDF.</p>}
         </aside>
       </div>

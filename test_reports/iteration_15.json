@@ -1,0 +1,38 @@
+{
+  "summary": "Round 2 (Quotes, quote PDFs, Payments, Rate card and settings) tested end to end. Backend: new tests/test_round2_quotes_payments_kb.py (14 tests) and tests/test_quote_pdf_unit.py (1 test), 15/15 pass, run serially with -n 0. They cover: GET /api/quotes (401 without auth, row shape, totals open/accepted/count recomputed and matching); GET /api/quotes/{id} with lead + versions and 404 for an unknown id; /pdf (application/pdf, attachment filename, %PDF, text checked with PyMuPDF: company name and phone, 'Quote, version N', homeowner, project, every line, total, range, 'Deposit after signing (5%)', assumptions); company email/address appear in the PDF after a PUT; recalled notice. Portal quote.pdf: invalid token 404, 404 before any quote, 200 with the latest quote, 404 again after a recall. PUT /contractor/settings returns 422 for margin 61 and discount 31. GET /api/payments shape and totals. POST /payments/{id}/record: 422 for a bad method, 404 for an unknown id; check + reference saves as paid with the reference trimmed; lead becomes deposit_received; totals move; a second record returns 400. PUT /kb tasks/facts/rules persists, with 422 for a negative amount, a mismatched id, or priority 5. Unit test of build_quote_pdf: 'To be priced' for a null amount, negative line '-$500', escaping of & and <, recalled notice. Frontend (Playwright, desktop 1920 and mobile 390): every sidebar link goes to its route with no 'coming next' toast. Quotes page: stats, all 5 filter chips (counts 1/2/3/0 plus the empty state), latest-only checkbox, row opens quote-detail with lines and versions, and Download PDF saves a real PDF ('Ana Pereira quote v1.pdf'). Portal: download-quote-pdf-btn shows on QuoteScreen, ContractScreen and the done screen, and the portal download works. Payments page: filters, Record payment dialog (check + TEST_4471) closes, the row turns Paid with method Check, the button disappears, the toast shows, and the stats update ($2,995 to $1,945 due, $595 to $1,645 paid). Settings: groups by room (Bathroom/Kitchen/Any room); search; a task edit (label, amount, tier) persists as int; Save is disabled when an amount is blank. Questions edit (question, priority), Rules edit (note, uncertainty_pct, effect) and Company save all persist; margin 75 shows a validation toast. Mobile 390: no page overflow (scrollWidth 390), and the Quotes/Payments tables scroll inside overflow-x:auto. No page errors. Every KB and contractor doc was restored from a mongoexport backup and diffed identical. All TEST_ leads were removed. Dhivya and Sathish are byte-identical (status invited). Sample Ana was not touched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/contractor/settings", "issue": "ContractorSettings uses float, so an int margin 18 is stored as 18.0. Email and address are always written (as ''), even when they were absent before. Harmless, but a type drift."},
+      {"endpoint": "seed (pay-lead-chris)", "issue": "The sample paid deposit has method=None, so the Payments 'Method' column is blank for Chris Nolan. Seed it with method 'stripe' or 'check'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Quotes page on mobile and tablet (<xl)", "issues": ["The quote-detail aside renders below the table and the page does not scroll to it when a row is tapped. On 390px the detail starts about 900px down, so users may think nothing happened. Call scrollIntoView on open below xl."]},
+      {"screen": "Portal pending_deposit (deposit) screen", "issues": ["There is no download-quote-pdf-btn on the deposit-due screen (it is present on the Quote, Contract and done screens). It is probably useful there too, but it is not in the spec."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_round2_quotes_payments_kb.py", "/app/backend/tests/test_quote_pdf_unit.py", "/app/test_reports/pytest/round2.xml"],
+  "action_items": [
+    "Optional: scroll quote-detail into view on narrow screens when a quote row is clicked",
+    "Optional: FactForm saves a numeric fact default (e.g. floor_area=60) as a string once the user edits it (the input value is a string). Cast to Number when typeof doc.default === 'number'",
+    "Optional: seed a method for the sample paid deposit (Chris Nolan)"
+  ],
+  "critical_code_review_comments": [
+    "settings/FactForm.jsx: the default is sent as a string after an edit, so a numeric fact's default changes type in kb_facts. The engine may then compare or multiply a string. Coerce to the original type.",
+    "QuotesPage/PaymentsPage: an API failure silently shows the empty state (catch -> empty data) with no error message. SettingsPage load() has no catch, so a /kb failure leaves the page on 'Loading...' forever.",
+    "QuoteDetail downloadPdf uses the frontend-built filename, not the server Content-Disposition. This is fine, but it differs from the portal filename ('Apex Remodeling quote v1 - Name.pdf').",
+    "quotes/routes.py pdf_response strips non-ASCII from the filename, so names with accents lose characters. Consider filename* (RFC 5987).",
+    "payments_list does N+1 find_one on payment_transactions per row. Fine at this scale."
+  ],
+  "updated_files": ["/app/backend/tests/test_round2_quotes_payments_kb.py", "/app/backend/tests/test_quote_pdf_unit.py"],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "TEST_R2 NoQuote, TEST_R2 Payer and TEST_UI Payer leads (phone (408) 555-0199) were created, then deleted with all their related docs. The KB and contractor were restored from /tmp/bk mongoexport and verified identical (the contractor email and address keys were $unset back to absent).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Used the existing session token test_session_r2smoke (divi@velvee.ai) for the UI and curl, and left it in place because the main agent created it. pytest's conftest creates and deletes its own sessions.",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_round2_quotes_payments_kb.py tests/test_quote_pdf_unit.py -n 0. The tests are stateful (they create TEST_ leads and advance them), restore KB and company settings themselves, and use PyMuPDF (fitz) for PDF text. Never touch Dhivya or Sathish."
+}
