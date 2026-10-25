@@ -20,6 +20,10 @@ class Camera(BaseModel):
     on: bool
 
 
+class CallLink(BaseModel):
+    vapi_call_id: str = Field(min_length=1, max_length=100)
+
+
 class TranscriptLine(BaseModel):
     role: str
     text: str
@@ -64,6 +68,12 @@ async def portal(token: str, live: bool = False):
 @router.post("/{token}/call/start")
 async def call_start(token: str):
     return await flow.start_call(await flow.lead_by_token(token))
+
+
+@router.post("/{token}/call/link")
+async def call_link(token: str, body: CallLink):
+    lead = await flow.lead_by_token(token)
+    return {"linked": await flow.link_vapi_call(lead["id"], body.vapi_call_id)}
 
 
 @router.post("/{token}/call/caption")

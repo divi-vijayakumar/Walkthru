@@ -83,6 +83,18 @@ async def start_call(lead):
     return session
 
 
+async def link_vapi_call(lead_id: str, vapi_call_id: str) -> bool:
+    """Tie the open session to Vapi's call id once, so the end-of-call report lands on it."""
+    if await db.call_sessions.find_one({"vapi_call_id": vapi_call_id}, {"_id": 1}):
+        return True
+    s = await db.call_sessions.find_one({"lead_id": lead_id, "ended_at": None, "vapi_call_id": None},
+                                        {"_id": 0, "id": 1}, sort=[("started_at", -1)])
+    if not s:
+        return False
+    await db.call_sessions.update_one({"id": s["id"]}, {"$set": {"vapi_call_id": vapi_call_id}})
+    return True
+
+
 async def add_caption(lead, role, text):
     line = {"role": role, "text": text, "at": iso()}
     await db.call_sessions.update_one(

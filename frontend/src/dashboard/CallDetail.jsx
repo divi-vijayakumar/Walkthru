@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { api } from "@/shared/api";
 import { money } from "@/shared/format";
 
-export const duration = (s) => (s == null ? "" : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`);
+export const duration = (s) => {
+  if (s == null) return "";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h ? `${h}h ` : ""}${m}m ${String(s % 60).padStart(2, "0")}s`;
+};
 export const when = (iso) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
 
 const Transcript = ({ lines }) => (

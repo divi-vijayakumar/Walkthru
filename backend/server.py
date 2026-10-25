@@ -7,7 +7,8 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from fastapi import FastAPI  # noqa: E402
 from starlette.middleware.cors import CORSMiddleware  # noqa: E402
-from core.db import client, db, iso  # noqa: E402
+from core.db import client, db  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
 from core.seed import seed  # noqa: E402
 from dashboard.routes import router as dashboard_router  # noqa: E402
 from portal.routes import router as portal_router  # noqa: E402
@@ -63,7 +64,9 @@ async def on_startup():
     await media_store.init()
     await percia_worker.init()
     itemizer_camera.init()
-    await db.call_sessions.update_many({"id": {"$regex": "^session-lead-"}, "ended_at": None}, {"$set": {"ended_at": iso(), "seeded": True}})
+    async for s in db.call_sessions.find({"id": {"$regex": "^session-lead-"}, "$or": [{"ended_at": None}, {"seeded": True}]}, {"_id": 0, "id": 1, "started_at": 1}):
+        end = (datetime.fromisoformat(s["started_at"]) + timedelta(minutes=6)).isoformat()
+        await db.call_sessions.update_one({"id": s["id"]}, {"$set": {"ended_at": end, "seeded": True}})
 
 
 @app.on_event("shutdown")

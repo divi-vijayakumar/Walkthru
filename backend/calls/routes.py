@@ -33,9 +33,9 @@ def secs(a, b):
 async def outcome(s, lead):
     if s.get("taken_over"):
         return "Taken over by contractor"
-    if await db.followups.find_one({"lead_id": s["lead_id"], "site_visit_requested": True, "at": {"$gte": s["started_at"]}}):
-        return "Visit requested"
     end = s.get("ended_at") or iso()
+    if await db.followups.find_one({"lead_id": s["lead_id"], "site_visit_requested": True, "at": {"$gte": s["started_at"], "$lte": end}}):
+        return "Visit requested"
     if await db.quotes.find_one({"lead_id": s["lead_id"], "created_at": {"$gte": s["started_at"], "$lte": end}}):
         return "Quote given"
     if lead.get("status") == "dropped":

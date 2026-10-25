@@ -159,6 +159,9 @@ async def tools(request: Request):
         return JSONResponse({"results": [{"toolCallId": tc.get("id", ""), "error": "Unauthorized"} for tc in calls]}, status_code=200)
     try:
         lead = await resolve_lead(msg)
+        call_id = (msg.get("call") or {}).get("id")
+        if lead and call_id:
+            await flow.link_vapi_call(lead["id"], call_id)
     except Exception:
         lead = None
     return JSONResponse({"results": await run_tool_calls(msg, lead)}, status_code=200)
@@ -214,12 +217,16 @@ def parse_transcript(msg):
     return lines
 
 
+BACKGROUND = set()
+
+
 async def save_report(lead, msg):
     """Keep Vapi's transcript, recording and summary on the call, even if the portal already ended it."""
     from calls.routes import copy_recording
     call_id = (msg.get("call") or {}).get("id")
     s = call_id and await db.call_sessions.find_one({"vapi_call_id": call_id}, {"_id": 0, "id": 1, "ended_at": 1})
-    s = s or await db.call_sessions.find_one({"lead_id": lead["id"]}, {"_id": 0, "id": 1, "ended_at": 1}, sort=[("started_at", -1)])
+    s = s or await db.call_sessions.find_one({"lead_id": lead["id"], "vapi_call_id": None},
+                                             {"_id": 0, "id": 1, "ended_at": 1}, sort=[("started_at", -1)])
     if not s:
         return
     lines, art = parse_transcript(msg), msg.get("artifact") or {}
@@ -233,7 +240,9 @@ async def save_report(lead, msg):
         upd["recording_url"] = rec
     await db.call_sessions.update_one({"id": s["id"]}, {"$set": upd})
     if rec:
-        asyncio.create_task(copy_recording(s["id"], rec))
+        task = asyncio.create_task(copy_recording(s["id"], rec))
+        BACKGROUND.add(task)
+        task.add_done_callback(BACKGROUND.discard)
 
 
 @router.post("/webhook")
@@ -242,10 +251,15 @@ async def webhook(request: Request):
         return JSONResponse({"received": False, "error": "Unauthorized"}, status_code=200)
     try:
         msg = await read_message(request)
-        if msg.get("type") == "end-of-call-report":
+        kind, call_id = msg.get("type"), (msg.get("call") or {}).get("id")
+        if kind == "end-of-call-report":
             lead = await resolve_lead(msg)
             if lead and not lead["id"].startswith("lead-"):
                 await save_report(lead, msg)
+        elif kind == "status-update" and call_id:
+            lead = await resolve_lead(msg)
+            if lead:
+                await flow.link_vapi_call(lead["id"], call_id)
     except Exception as e:
         logger.exception("webhook failed: %s", e)
     return JSONResponse({"received": True}, status_code=200)

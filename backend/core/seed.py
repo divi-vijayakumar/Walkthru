@@ -1,6 +1,6 @@
 import logging
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
 from core.db import db, iso, now, portal_link, CONTRACTOR_ID
 from core.status import FLOW
 from pricing.engine import new_state, price, margin_pct, drivers, r500, DEPOSIT_PCT
@@ -101,7 +101,8 @@ async def insert_lead(row):
     if status == "walkthru_initiated":
         live = "...a walk-in shower instead of the tub, and I'd love a double vanity if it fits."
         await db.call_sessions.insert_one({
-            "id": f"session-{lead_id}", "lead_id": lead_id, "started_at": history[2]["at"], "ended_at": ago(20), "seeded": True,
+            "id": f"session-{lead_id}", "lead_id": lead_id, "started_at": history[2]["at"],
+            "ended_at": iso(datetime.fromisoformat(history[2]["at"]) + timedelta(minutes=6)), "seeded": True,
             "transcript": transcript[:1] + [{"role": "user", "text": live, "at": ago(20)}],
             "live_caption": live, "live_role": "user", "camera_on": False, "chips": []})
     elif idx >= 3:

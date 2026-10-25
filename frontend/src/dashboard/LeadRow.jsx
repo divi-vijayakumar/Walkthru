@@ -20,21 +20,21 @@ export const QuotePendingBadge = ({ due, now }) => {
 };
 
 const QuoteCell = ({ lead, now }) => {
-  if (lead.status === "walkthru_initiated") return <span className="text-wt-muted">Building...</span>;
+  if (lead.status === "walkthru_initiated" && lead.live) return <span className="text-wt-muted">Building...</span>;
   if (lead.quote_pending && lead.quote_pending_due_at) return <QuotePendingBadge due={lead.quote_pending_due_at} now={now} />;
   if (lead.quote_total) return <span className="font-bold text-wt-ink tabular">{money(lead.quote_total)}</span>;
   return <span className="text-wt-muted">{lead.status === "walkthru_completed" ? "Pending" : "None"}</span>;
 };
 
 const Activity = ({ lead, now }) =>
-  lead.status === "walkthru_initiated" ? (
+  lead.live ? (
     <span className="font-semibold text-wt-accent">On call now</span>
   ) : (
     <span className="text-wt-muted">{ACTIVITY[lead.status]} {ago(lead.last_activity_at, now)}</span>
   );
 
 export const LeadRow = ({ lead, selected, flash, now, onSelect, onAction }) => {
-  const label = ACTIONS[lead.status] || "Open";
+  const label = lead.status === "walkthru_initiated" && !lead.live ? "Open" : ACTIONS[lead.status] || "Open";
   const primary = lead.status === "new";
   return (
     <tr

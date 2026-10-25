@@ -16,6 +16,9 @@ export function createVapiAdapter({ token, data, mode = "first" }) {
   const vapi = new Vapi(data.voice.public_key);
   let ended = false;
   let tookOver = false;
+  let callId = null;
+  let started = null;
+  const link = () => { if (callId) api.post(`/portal/${token}/call/link`, { vapi_call_id: callId }).catch(() => {}); };
 
   const finish = async () => {
     if (ended) return;
@@ -24,7 +27,7 @@ export function createVapiAdapter({ token, data, mode = "first" }) {
     ends.emit();
   };
 
-  vapi.on("call-start", () => { api.post(`/portal/${token}/call/start`).catch(() => {}); });
+  vapi.on("call-start", () => { started = api.post(`/portal/${token}/call/start`).then(link).catch(() => {}); });
   vapi.on("call-end", finish);
   vapi.on("error", () => finish());
   vapi.on("message", (m) => {
@@ -34,7 +37,7 @@ export function createVapiAdapter({ token, data, mode = "first" }) {
 
   return {
     async start() {
-      await vapi.start(data.voice.assistant_id, {
+      const call = await vapi.start(data.voice.assistant_id, {
         variableValues: {
           customer_name: data.lead.name,
           contractor_name: data.contractor.name,
@@ -43,6 +46,8 @@ export function createVapiAdapter({ token, data, mode = "first" }) {
           current_quote: mode === "change" && data.quote ? `Version ${data.quote.version}, ${rangeOf(data.quote)}` : "",
         },
       });
+      callId = call?.id || null;
+      if (started) started.then(link);
       return { mic: true };
     },
     stop() {

@@ -1,0 +1,46 @@
+{
+  "summary": "Round 1 (calls first) tested end-to-end. Backend: new pytest test_round1_calls.py 12/12 pass (week counts vs status_history, seeded sessions ended, real-first sort, /api/calls list+detail, signed recording link 200/403, Vapi end-of-call-report after portal end saves transcript/recording/summary/vapi_call_id without re-running end_call, recording copied to storage within ~6s, sample leads never matched, take over -> escalated + session.takeover + takeover_alert WhatsApp body exact (simulated) + outcome 'Taken over by contractor', queue_quote_followup site_visit_requested -> followups/lead/dashboard visits + outcome 'Visit requested', POST /leads/{id}/visit -> visit_scheduled message exact + visit_scheduled_for). Regression test_call_fixes/test_itemizer/test_itemizer_fixes/test_media_percia serial: 70 passed, 1 deselected (fix7 Gemini). Frontend (Playwright, Mongo session cookie): week-line + 5 buttons filter/clear table, old tiles gone, visit-section row/time/schedule/call works and shows visit-scheduled, 'Visit requested' status filter works, drawer call-card with audio (signed link fetch 200 audio/x-wav), scrollable Homeowner/Alex transcript, outcome, findings empty state, take-over-btn only on truly live lead (not on Maya/ended), Take over click shows takeover-prompt with tel: link, sidebar Sessions -> /sessions with rows + detail panel, Quotes still shows 'coming next' toast. Two issues with seeded sample data found (see below).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "server.py startup migration / /api/calls", "issue": "Seeded sessions are ended by setting ended_at=now() at backend startup, so session-lead-maya shows duration '895m 38s' (~15 h) on Sessions page and outcome 'Quote given' because the quote window becomes huge. Should set ended_at = started_at + realistic duration (e.g. 5-8 min), also in core/seed.py so /dev/reset doesn't recreate open sessions."},
+      {"endpoint": "calls/routes.py outcome()", "issue": "'Visit requested' check uses followups at >= started_at with no upper bound (ended_at), so a visit request from a later call relabels all earlier calls of that lead."},
+      {"endpoint": "vapi/routes.py save_report", "issue": "vapi_call_id is never stored at call start (portal /call/start doesn't receive Vapi call.id), so the first report always falls back to the lead's latest session; if a homeowner starts a second call before the first report arrives, the report attaches to the wrong session. Consider passing call.id from vapiAdapter on call-start to the backend."},
+      {"endpoint": "vapi/routes.py save_report", "issue": "asyncio.create_task(copy_recording(...)) without holding a reference; task may be garbage-collected. Keep a set of background tasks."},
+      {"endpoint": "/api/dashboard", "issue": "N+1 query: one call_sessions.find_one per lead for last_call_id. Fine at current scale."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LeadRow (Maya Rios sample lead)", "issue": "Maya has no live session (live=null, no take-over/on-call card in drawer - correct) but the leads table still shows 'On call now', 'Building...' and a 'Watch' action because LeadRow keys off status==walkthru_initiated instead of lead.live. Contradicts 'Maya shows no live card/timer'. Use lead.live for these cells or move seeded Maya to walkthru_completed.", "selector": "[data-testid='lead-row-lead-maya']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard In-person visit section", "issues": ["visit-time uses native <input type=datetime-local> browser picker instead of shadcn Calendar/Popover + time select"]},
+      {"screen": "Sessions page", "issues": ["duration() shows minutes only (e.g. '895m 38s'); add hours formatting", "Quote column blank for calls without quote; consider '—'"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_round1_calls.py", "/app/backend/tests/ui_seed_round1.py", "/app/test_reports/pytest/round1.xml", "/app/test_reports/pytest/regression_r1.xml"],
+  "action_items": [
+    "Give seeded sessions a realistic ended_at (started_at + few minutes) in startup migration and core/seed.py; fixes Maya 895m duration and wrong 'Quote given' outcome",
+    "LeadRow: show 'On call now'/'Watch'/'Building...' only when lead.live is set (Maya currently looks live in the table)",
+    "Bound the 'Visit requested' outcome followup lookup by the session's ended_at",
+    "Optional: record Vapi call.id on call start so end-of-call-report matches by call.id reliably",
+    "Optional: replace native datetime-local in visit row with shadcn date/time picker"
+  ],
+  "critical_code_review_comments": [
+    "calls/routes.py outcome(): followups lookup lacks $lte ended_at",
+    "vapi/routes.py: vapi_call_id only set by the report itself; matching falls back to latest session",
+    "vapi/routes.py: fire-and-forget create_task without reference",
+    "dashboard/routes.py: per-lead find_one for last_call_id (N+1)",
+    "mockAdapter.takeOver / vapiAdapter.takeOver implementations match spec (say(TAKEOVER_LINE, true); mock emits line and finishes after 2.5s); useLiveQuote polls session.takeover every 1.5s. Not exercised live since VOICE_MODE=vapi"
+  ],
+  "updated_files": ["/app/backend/tests/test_round1_calls.py", "/app/backend/tests/ui_seed_round1.py"],
+  "success_rate": {"backend": "100% (12/12 new, 70/70 regression)", "frontend": "~92% (all flows work; Maya row still looks live)"},
+  "test_credentials": "Mongo-created session for divi@velvee.ai (conftest make_session); VAPI_SERVER_SECRET from backend/.env",
+  "seed_data_creation": "TEST_R1 * leads created and fully cleaned up (leads, call_sessions, followups, sms_log, quotes, itemizer_*). ui_seed_round1.py clean also removes test_session_* user sessions.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest tests/test_round1_calls.py -n 0. For UI: python tests/ui_seed_round1.py seed (prints owner token + lead/session ids; creates finished call with recording, visit request, live call), then clean. Recording audio URL used: https://download.samplelib.com/wav/sample-3s.wav (the uic.edu wav in the request is unreachable). Never call /api/dev/reset; don't touch Dhivya/Sathish. Round 2 (Quotes PDF, Payments, Rate card) not built.",
+  "rca of the issue": "Maya 895m: server.py startup migration does update_many({id ^session-lead-, ended_at None}, {ended_at: iso()}) -> ended_at = backend start time (~15h after seeded started_at). Maya 'On call now': LeadRow.jsx lines 23/30 and ACTIONS map key on lead.status === 'walkthru_initiated'; Maya's status remains walkthru_initiated after her session was force-ended."
+}
