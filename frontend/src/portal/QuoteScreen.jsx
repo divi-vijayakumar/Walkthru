@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Mic } from "lucide-react";
 import { money, range } from "@/shared/format";
 import { SeenFrame } from "@/shared/SeenFrame";
+import { QuotePdfLink } from "@/shared/QuotePdfLink";
 import { PortalHeader, PortalShell, PrimaryButton, Row, Steps } from "@/portal/PortalShell";
 
 export const LineItems = ({ quote }) => (
@@ -34,6 +35,7 @@ export const QuoteScreen = ({ data, onTalk, onSign, busy }) => {
           className="mt-2 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-wt-line text-[16px] font-semibold text-wt-ink hover:border-wt-ink/30">
           <Mic className="h-4 w-4" /> Talk to change this
         </button>
+        <QuotePdfLink className="mt-2" />
       </section>
       <section data-testid="contract-summary" className="mt-4 rounded-2xl border border-wt-line bg-white p-4">
         <h2 className="mb-2 text-[17px] font-bold text-wt-ink">Contract summary</h2>

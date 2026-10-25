@@ -1,9 +1,9 @@
 import { House, LogOut } from "lucide-react";
-import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/dashboard/Auth";
 
 const NAV = ["Leads", "Sessions", "Quotes", "Payments", "Rate card and settings"];
+const PATHS = { Leads: "/", Sessions: "/sessions", Quotes: "/quotes", Payments: "/payments", "Rate card and settings": "/settings" };
 
 export const Logo = ({ dark = true }) => (
   <div className="flex items-center gap-2.5">
@@ -14,15 +14,11 @@ export const Logo = ({ dark = true }) => (
   </div>
 );
 
-const activeLabel = () => ({ "/sessions": "Sessions", "/settings": "Rate card and settings" }[window.location.pathname] || "Leads");
+const activeLabel = () => NAV.find((l) => PATHS[l] === window.location.pathname) || "Leads";
 
 const NavItem = ({ label, active }) => {
   const navigate = useNavigate();
-  const go = () => {
-    if (label.startsWith("Rate")) return navigate("/settings");
-    if (label === "Sessions") return navigate("/sessions");
-    if (!active) toast(`${label} is coming next`, { description: "This demo focuses on the Leads view." });
-  };
+  const go = () => { if (!active) navigate(PATHS[label]); };
   return (
   <button
     data-testid={`sidebar-nav-${label.split(" ")[0].toLowerCase()}`}

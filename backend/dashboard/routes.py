@@ -1,5 +1,4 @@
 import os
-import statistics
 from datetime import datetime, timedelta
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,6 +24,16 @@ class LeadCreate(BaseModel):
 
 class AgentToggle(BaseModel):
     agent_enabled: bool
+
+
+class ContractorSettings(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    agent_name: str = Field(min_length=2, max_length=30)
+    phone: str = Field(min_length=7, max_length=25)
+    email: str = Field(default="", max_length=120)
+    address: str = Field(default="", max_length=200)
+    min_margin_pct: float = Field(ge=0, le=60)
+    max_discount_pct: float = Field(ge=0, le=30)
 
 
 def ts(value):
@@ -72,6 +81,15 @@ async def dashboard():
 @router.patch("/contractor")
 async def update_contractor(body: AgentToggle):
     await db.contractors.update_one({"id": CONTRACTOR_ID}, {"$set": {"agent_enabled": body.agent_enabled}})
+    return await get_contractor()
+
+
+@router.put("/contractor/settings")
+async def contractor_settings(body: ContractorSettings):
+    data = body.model_dump()
+    for k in ("name", "agent_name", "phone", "email", "address"):
+        data[k] = data[k].strip()
+    await db.contractors.update_one({"id": CONTRACTOR_ID}, {"$set": data})
     return await get_contractor()
 
 

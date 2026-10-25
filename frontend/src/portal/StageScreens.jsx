@@ -3,6 +3,7 @@ import { CheckCircle2, Loader2, Lock } from "lucide-react";
 import { money } from "@/shared/format";
 import { PortalHeader, PortalShell, PrimaryButton, Row, Steps } from "@/portal/PortalShell";
 import { LineItems } from "@/portal/QuoteScreen";
+import { QuotePdfLink } from "@/shared/QuotePdfLink";
 
 export const ContractScreen = ({ data, initialName, onSign, busy }) => {
   const [name, setName] = useState(initialName || "");
@@ -22,6 +23,7 @@ export const ContractScreen = ({ data, initialName, onSign, busy }) => {
         <p className="mt-2">{c} confirms the final price after a site check. Any change above the quoted range needs the homeowner's written approval. The remaining balance is billed on milestones agreed at the site check.</p>
         <p className="mt-2 text-[12px] text-wt-muted">Demo agreement for illustration only.</p>
       </section>
+      <QuotePdfLink className="mt-3" />
       <label className="mt-5 block text-[15px] font-medium" htmlFor="confirm-name">Your full name</label>
       <input id="confirm-name" data-testid="confirm-name-input" value={name} onChange={(e) => setName(e.target.value)}
         className="mt-2 h-14 w-full rounded-2xl border border-wt-line bg-white px-4 text-lg italic focus:border-wt-accent focus:outline-none" />
@@ -83,6 +85,7 @@ export const DoneScreen = ({ data }) => (
       <Row label="Project total" value={money(data.quote?.total)} />
       <Row label="Questions" value={data.contractor.phone} />
     </section>
+    {data.quote && <QuotePdfLink className="mt-4" />}
   </PortalShell>
 );
 

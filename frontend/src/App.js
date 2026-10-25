@@ -4,6 +4,8 @@ import DashboardPage from "@/dashboard/DashboardPage";
 import DevPage from "@/dashboard/DevPage";
 import SettingsPage from "@/dashboard/SettingsPage";
 import SessionsPage from "@/dashboard/SessionsPage";
+import QuotesPage from "@/dashboard/QuotesPage";
+import PaymentsPage from "@/dashboard/PaymentsPage";
 import PortalPage from "@/portal/PortalPage";
 import { AuthCallback, RequireAuth } from "@/dashboard/Auth";
 
@@ -20,6 +22,8 @@ function AppRouter() {
         <Route path="/dev" element={<RequireAuth><DevPage /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/sessions" element={<RequireAuth><SessionsPage /></RequireAuth>} />
+        <Route path="/quotes" element={<RequireAuth><QuotesPage /></RequireAuth>} />
+        <Route path="/payments" element={<RequireAuth><PaymentsPage /></RequireAuth>} />
         <Route path="/w/:token" element={<PortalPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -1,51 +1,49 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api, errorText } from "@/shared/api";
+import { money } from "@/shared/format";
+import { Chips, PageShell } from "@/dashboard/PageShell";
+import { TaskForm } from "@/dashboard/settings/TaskForm";
+import { FactForm, PRIORITY, ladderText } from "@/dashboard/settings/FactForm";
+import { KIND, RuleForm, ruleText } from "@/dashboard/settings/RuleForm";
+import { CompanyForm } from "@/dashboard/settings/CompanyForm";
 
-const TABS = [["tasks", "Tasks and prices", "task_id"], ["facts", "Facts and ladders", "fact_id"], ["rules", "Rules, drivers and measuring", "rule_id"]];
+const TABS = [["tasks", "Prices"], ["facts", "Questions"], ["rules", "Rules"], ["company", "Company"]];
+const ID = { tasks: "task_id", facts: "fact_id", rules: "rule_id" };
+const ROOM = (r) => (r ? r[0].toUpperCase() + r.slice(1) : "Any room");
 
-const summary = (tab, d) => {
-  if (tab === "tasks") {
-    const when = (p) => (p.when ? `if ${Object.entries(p.when).map(([k, v]) => `${k} ${v.join("/")}`).join(", ")}: ` : "");
-    const amt = (p) => `${when(p)}${p.label ? `${p.label} ` : ""}${p.tiers ? p.tiers.join(" / ") : p.amount}${p.qty ? ` per ${p.qty}` : ""}`;
-    return `${d.room || "any room"} · ${d.price.map(amt).join(" · ")}`;
-  }
-  if (tab === "facts") return `${d.scope} · ${d.ladder.join(" > ")} · default ${d.default}`;
-  return d.kind === "rule" ? `adds ${d.add} · ${d.note}` : `${d.kind} · ${d.name}`;
+const priceText = (d) => d.price.map((p) => (p.tiers ? `${money(p.tiers[0])}-${money(p.tiers[2])}` : money(p.amount))).join(" · ");
+const summary = (tab, d, maps) => {
+  if (tab === "tasks") return `${ROOM(d.room)} · ${priceText(d)}`;
+  if (tab === "facts") return `${ladderText(d.ladder)} · ${PRIORITY.find(([v]) => v === (d.priority == null ? "" : String(d.priority)))[1].split(" (")[0]}`;
+  return `${KIND[d.kind] || d.kind} · ${ruleText(d, maps.tasks, maps.facts)}`;
 };
 
-const Row = ({ tab, idKey, doc, onSaved }) => {
+const KbRow = ({ tab, doc, maps, onSave }) => {
   const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-  const save = async () => {
+  const id = doc[ID[tab]];
+  const save = async (next) => {
     try {
-      const parsed = JSON.parse(text);
-      await api.put(`/kb/${tab}/${doc[idKey]}`, parsed);
+      await api.put(`/kb/${tab}/${id}`, next);
       toast.success("Saved");
       setOpen(false);
-      onSaved();
+      onSave();
     } catch (e) {
-      toast.error(e instanceof SyntaxError ? "That isn't valid JSON" : errorText(e));
+      toast.error(errorText(e));
     }
   };
+  const Form = { tasks: TaskForm, facts: FactForm, rules: RuleForm }[tab];
   return (
-    <li data-testid={`kb-row-${doc[idKey]}`} className="border-t border-wt-line px-4 py-3">
+    <li data-testid={`kb-row-${id}`} className="border-t border-wt-line px-4 py-3 first:border-t-0">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">{doc.label || doc.name || doc[idKey]} <span className="text-xs text-wt-muted">{doc[idKey]}</span></p>
-          <p className="truncate text-[13px] text-wt-muted">{summary(tab, doc)}</p>
+          <p className="font-semibold text-wt-ink">{doc.label || doc.name || id}</p>
+          <p className="truncate text-[13px] text-wt-muted">{summary(tab, doc, maps)}</p>
         </div>
-        <button data-testid={`kb-edit-${doc[idKey]}`} onClick={() => { setText(JSON.stringify(doc, null, 2)); setOpen(!open); }}
-          className="min-h-[40px] rounded-lg border border-wt-line px-3 text-sm font-bold">{open ? "Close" : "Edit"}</button>
+        <button data-testid={`kb-edit-${id}`} onClick={() => setOpen(!open)}
+          className="min-h-[40px] rounded-lg border border-wt-line px-3 text-sm font-bold transition-colors duration-150 hover:border-wt-ink/30">{open ? "Close" : "Edit"}</button>
       </div>
-      {open && (
-        <div className="mt-3">
-          <textarea data-testid={`kb-json-${doc[idKey]}`} value={text} onChange={(e) => setText(e.target.value)} rows={14}
-            className="w-full rounded-lg border border-wt-line p-3 font-mono text-[12px]" />
-          <button data-testid={`kb-save-${doc[idKey]}`} onClick={save} className="mt-2 min-h-[44px] rounded-lg bg-wt-accent px-4 text-sm font-bold text-white">Save</button>
-        </div>
-      )}
+      {open && <Form doc={doc} facts={maps.facts} tasks={maps.tasks} onSave={save} />}
     </li>
   );
 };
@@ -53,29 +51,34 @@ const Row = ({ tab, idKey, doc, onSaved }) => {
 export default function SettingsPage() {
   const [kb, setKb] = useState(null);
   const [tab, setTab] = useState("tasks");
+  const [q, setQ] = useState("");
   const load = useCallback(() => api.get("/kb").then((r) => setKb(r.data)), []);
   useEffect(() => { document.title = "Rate card and settings · Walkthru"; load(); }, [load]);
-  const [, label, idKey] = TABS.find((t) => t[0] === tab);
+  const maps = useMemo(() => ({ tasks: Object.fromEntries((kb?.tasks || []).map((t) => [t.task_id, t])),
+    facts: Object.fromEntries((kb?.facts || []).map((f) => [f.fact_id, f])) }), [kb]);
+  const rows = (kb?.[tab] || []).filter((d) => `${d.label || ""} ${d.name || ""} ${d[ID[tab]]}`.toLowerCase().includes(q.toLowerCase()));
+  const groups = tab === "tasks" ? [...new Set(rows.map((d) => d.room || null))].map((r) => [ROOM(r), rows.filter((d) => (d.room || null) === r)]) : [[null, rows]];
   return (
-    <div data-testid="settings-page" className="mx-auto min-h-screen max-w-5xl px-4 py-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-3xl font-bold">Rate card and settings</h1>
-          <p className="text-sm text-wt-muted">The Itemizer's knowledge base. All prices are placeholders until you replace them.</p>
-        </div>
-        <Link to="/" className="inline-flex min-h-[44px] items-center rounded-lg border border-wt-line bg-white px-3.5 text-sm font-bold">Dashboard</Link>
+    <PageShell testId="settings-page" title="Rate card and settings" subtitle="What Alex charges, what Alex asks, and the rules behind every quote. All prices are placeholders until you replace them.">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <Chips prefix="kb-tab" options={TABS} value={tab} onChange={(t) => { setTab(t); setQ(""); }} />
+        {tab !== "company" && (
+          <input data-testid="kb-search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search"
+            className="h-11 w-full rounded-lg border border-wt-line bg-white px-3 text-[15px] focus:border-wt-accent focus:outline-none sm:w-64" />
+        )}
       </div>
-      <div className="mt-6 flex flex-wrap gap-2">
-        {TABS.map(([k, l]) => (
-          <button key={k} data-testid={`kb-tab-${k}`} onClick={() => setTab(k)}
-            className={`min-h-[44px] rounded-lg px-3.5 text-sm font-bold ${tab === k ? "bg-wt-ink text-white" : "border border-wt-line bg-white"}`}>{l}</button>
-        ))}
-      </div>
-      <h2 className="mb-2 mt-6 text-sm font-bold uppercase tracking-wide text-wt-muted">{label}</h2>
-      <ul className="overflow-hidden rounded-2xl border border-wt-line bg-white">
-        {!kb && <li className="px-4 py-6 text-sm text-wt-muted">Loading...</li>}
-        {kb?.[tab].map((d) => <Row key={d[idKey]} tab={tab} idKey={idKey} doc={d} onSaved={load} />)}
-      </ul>
-    </div>
+      {tab === "company" ? (
+        <div className="mt-4 max-w-3xl rounded-2xl border border-wt-line bg-white"><CompanyForm /></div>
+      ) : groups.map(([title, docs]) => (
+        <section key={title || "all"} className="mt-5 max-w-4xl">
+          {title && <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-wt-muted">{title}</h2>}
+          <ul className="overflow-hidden rounded-2xl border border-wt-line bg-white">
+            {!kb && <li className="px-4 py-6 text-sm text-wt-muted">Loading...</li>}
+            {kb && docs.length === 0 && <li className="px-4 py-6 text-sm text-wt-muted">Nothing matches.</li>}
+            {docs.map((d) => <KbRow key={d[ID[tab]]} tab={tab} doc={d} maps={maps} onSave={load} />)}
+          </ul>
+        </section>
+      ))}
+    </PageShell>
   );
 }

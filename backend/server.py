@@ -13,7 +13,8 @@ from core.seed import seed  # noqa: E402
 from dashboard.routes import router as dashboard_router  # noqa: E402
 from portal.routes import router as portal_router  # noqa: E402
 from vapi.routes import router as vapi_router  # noqa: E402
-from payments.routes import router as payments_router  # noqa: E402
+from payments.routes import router as payments_router, admin_router as payments_admin_router  # noqa: E402
+from quotes.routes import router as quotes_router, public_router as quotes_public_router  # noqa: E402
 from auth.routes import router as auth_router  # noqa: E402
 from itemizer.routes import router as itemizer_router  # noqa: E402
 from itemizer.kb import seed_kb  # noqa: E402
@@ -38,6 +39,9 @@ app.include_router(dashboard_router)
 app.include_router(portal_router)
 app.include_router(vapi_router)
 app.include_router(payments_router)
+app.include_router(payments_admin_router)
+app.include_router(quotes_router)
+app.include_router(quotes_public_router)
 app.include_router(auth_router)
 app.include_router(itemizer_router)
 app.include_router(itemizer_camera.callback_router)

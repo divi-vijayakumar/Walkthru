@@ -2,13 +2,17 @@ import os
 import asyncio
 import logging
 import stripe
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
-from core.db import db, iso
+from datetime import timedelta
+from typing import Literal
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from auth.routes import require_user
+from core.db import db, iso, now
 from core.quotes import latest_quote
 from core import flow
 
 router = APIRouter(prefix="/api")
+admin_router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 logger = logging.getLogger("payments")
 stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
 TAX_MODE = "calc_only"  # home-improvement deposit (not a digital good): Stripe calculates tax, contractor files
@@ -16,6 +20,43 @@ TAX_MODE = "calc_only"  # home-improvement deposit (not a digital good): Stripe 
 
 class CheckoutRequest(BaseModel):
     origin_url: str
+
+
+class OfflinePayment(BaseModel):
+    method: Literal["cash", "check", "other"]
+    reference: str = Field(default="", max_length=80)
+
+
+@admin_router.get("/payments")
+async def payments_list():
+    leads = {lead["id"]: lead async for lead in db.leads.find({}, {"_id": 0, "id": 1, "name": 1, "ask": 1, "status": 1, "quote_total": 1})}
+    rows = []
+    async for p in db.payments.find({"lead_id": {"$in": list(leads)}}, {"_id": 0}).sort("created_at", -1):
+        lead = leads[p["lead_id"]]
+        tx = await db.payment_transactions.find_one({"payment_id": p["id"]}, {"_id": 0, "payment_status": 1}, sort=[("created_at", -1)])
+        rows.append({"id": p["id"], "lead_id": p["lead_id"], "lead_name": lead["name"], "ask": lead["ask"],
+                     "sample": p["lead_id"].startswith("lead-"), "amount": p["amount"], "status": p["status"],
+                     "method": p.get("method"), "reference": p.get("reference"), "created_at": p["created_at"],
+                     "paid_at": p.get("paid_at"), "checkout": tx["payment_status"] if tx else None,
+                     "project_total": lead.get("quote_total"),
+                     "can_record": p["status"] == "pending" and lead["status"] == "pending_deposit"})
+    rows.sort(key=lambda r: r["sample"])
+    since = iso(now() - timedelta(days=30))
+    paid = [r for r in rows if r["status"] == "paid"]
+    return {"payments": rows, "totals": {
+        "due": sum(r["amount"] for r in rows if r["status"] == "pending"),
+        "paid": sum(r["amount"] for r in paid), "paid_30d": sum(r["amount"] for r in paid if (r["paid_at"] or "") >= since),
+        "due_count": sum(1 for r in rows if r["status"] == "pending"), "paid_count": len(paid)}}
+
+
+@admin_router.post("/payments/{payment_id}/record")
+async def record_offline(payment_id: str, body: OfflinePayment):
+    p = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    if p["status"] != "pending":
+        raise HTTPException(400, "This deposit isn't due")
+    return await flow.pay_deposit(await flow.get_lead(p["lead_id"]), body.method, body.reference.strip() or None)
 
 
 def create_session(kwargs):
