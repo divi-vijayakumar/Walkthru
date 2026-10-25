@@ -12,7 +12,7 @@ SYSTEM = (
     "Reply with JSON only, no prose: {\"goals\": [{\"goal_id\": str, \"result\": \"met|ambiguous|not_found\", "
     "\"explanation\": one sentence, \"value\": number or null (counts and measurements only), \"unit\": str or null, "
     "\"hits\": [{\"frame\": frame index, \"box\": [x, y, w, h] as 0-1 fractions of the frame, \"label\": short label, "
-    "\"confidence\": 0-1}]}]}. Give at most 2 hits per goal, best first. Follow any label format a goal asks for."
+    "\"confidence\": 0-1}]}]}. Give at most 2 hits per goal, best first, unless a goal asks for more. Follow any label format a goal asks for."
 )
 
 

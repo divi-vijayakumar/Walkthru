@@ -62,7 +62,8 @@ async def tool_update_scope(lead, args, mode):
     out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, cam, bool(args.get("wants_price")))
     camera.after_turn(lead)
     if priced:
-        out["version"] = (await save_itemized(lead, priced))["version"]
+        q = await save_itemized(lead, priced)
+        out["version"] = q["version"] if q else None
     return out
 
 
@@ -93,7 +94,7 @@ async def itemizer_adjust(lead, args, mode):
     if not priced:
         return {**out, "say": say}
     q = await save_itemized(lead, priced)
-    return {**out, "say": say, "version": q["version"]}
+    return {**out, "say": say, "version": q["version"] if q else None}
 
 
 async def legacy_adjust(lead, args, mode):

@@ -16,8 +16,28 @@ MIN_ASK_IMPACT, PRIORITY_IMPACT = 300, 1000
 YES = {"yes", "yeah", "yep", "right", "correct", "that's right", "true", "sure", "yup"}
 NO = {"no", "nope", "wrong", "not right", "incorrect"}
 PRICE_WORDS = re.compile(r"\b(quote|price|pricing|how much)\b", re.I)
-WORK_WORDS = re.compile(r"\b(replace|new|add|install|remove|swap|redo|change|update|upgrade|fix|repair|put in|move|redo|get rid of)\b", re.I)
-CLAUSES = re.compile(r"[,.;!?]+|\band also\b|\balso\b|\bplus\b|\band then\b")
+WORK_WORDS = re.compile(r"\b(replace|new|add|install|remove|swap|redo|change|update|upgrade|fix|repair|put in|move|get rid of|take out|rip out|"
+                        r"tear out|knock down|open up|improve|better|nicer|build|refresh)\b", re.I)
+CLAUSES = re.compile(r"[,.;!?]+|\band also\b|\balso\b|\bplus\b|\band then\b|\band (?=(?:make|change|take|replace|remove|add|put|get|rip|knock|"
+                     r"open|install|redo|swap|fix|move|update|upgrade|paint|build)\b)")
+VAGUE_SINK = re.compile(r"\bsink( area)?\b", re.I)
+CLUES = ("floor_above", "wall_central", "beam_nearby")
+SCENARIO_MIN = 2000
+SCENARIOS = {"load_bearing": {"likely": "If it isn't load-bearing, the price drops by about ${d:,}.",
+                              "unlikely": "If it turns out to be load-bearing, the price goes up by about ${d:,}."},
+             "water_damage": {"no": "If we find hidden water damage, the price goes up by about ${d:,}.",
+                              "yes": "If there's no water damage after all, the price drops by about ${d:,}."}}
+FLIP = {"likely": "unlikely", "unlikely": "likely", "yes": "no", "no": "yes"}
+SURVEY_KEYS = {"sink": "sink_type", "mirror": "mirror_type", "floor": "floor_type", "walls": "wall_finish", "water_damage": "water_damage"}
+SEEN_PHRASE = {"sink_type": "a {v} sink", "mirror_type": "a {v} mirror", "floor_type": "a {v} floor",
+               "wall_finish": {"paint": "painted walls", "tile": "tiled walls", "wallpaper": "wallpapered walls"},
+               "water_damage": {"yes": "signs of water damage"}}
+SUGGEST = [("mirror_type", None, "mirror_replace", "Would you like the mirror replaced too?"),
+           ("sink_type", ["pedestal", "wall-mounted"], "new_vanity", "Would you like a vanity with storage in place of the {v} sink?")]
+
+
+def and_list(xs):
+    return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1]
 
 
 def detect_room(said, current):
@@ -89,6 +109,11 @@ class Itemizer:
         return [f for f in self.s["facts"] if f["name"] == name]
 
     def value(self, name, item_id=None):
+        force = self.s.get("force") or {}
+        if name in force:
+            return force[name]
+        if name == "load_bearing":  # never asked: two or more clues mean likely
+            return "likely" if sum(str(self.value(n)).lower() == "yes" for n in CLUES) >= 2 else "unlikely"
         fs = [f for f in self.facts_named(name) if f["state"] in ("resolved", "assumed")]
         if item_id:
             fs = [f for f in fs if f.get("item_id") in (item_id, None)] or fs
@@ -98,17 +123,33 @@ class Itemizer:
         return f["ladder"][f["idx"]] if f["idx"] < len(f["ladder"]) else "assume"
 
     def assume(self, f, camera_pending=False):
+        if f.get("p0"):  # must-ask facts are never defaulted
+            f["state"] = "open"
+            return
         d = self.kbf[f["name"]]
         f.update(state="assumed", value=d["default"], basis="assumed", confidence=0.5, camera_pending=camera_pending or f.get("camera_pending", False),
                  site_visit=d.get("can_answer") is False)
 
+    def p0_ladder(self, d):
+        lad = [c for c in d["ladder"] if c != "assume"]
+        return lad if any(c in ("ask", "measure") for c in lad) else lad + ["ask"]
+
+    def make_p0(self, f, camera_on):
+        f.update(p0=True, ladder=self.p0_ladder(self.kbf[f["name"]]))
+        if f["state"] != "resolved":
+            f.update(state="open", value=None, basis=None, idx=0)
+            self.enter(f, camera_on)
+
     def enter(self, f, camera_on):
         while True:
+            if f.get("p0") and f["idx"] >= len(f["ladder"]):
+                f.update(idx=len(f["ladder"]) - 1, state="open")
+                return
             ch = self.channel(f)
             if ch == "assume":
                 self.assume(f)
                 return
-            if ch == "ask" and self.kbf[f["name"]].get("can_answer") is False:  # homeowners can't know this: show or default
+            if ch == "ask" and self.kbf[f["name"]].get("can_answer") is False and not f.get("p0"):  # homeowners can't know this: show or default
                 f["idx"] += 1
                 continue
             if ch == "camera" and not camera_on:  # move on now; a later clip can still answer it
@@ -132,22 +173,33 @@ class Itemizer:
     def resolve(self, f, value, basis, confidence=1.0, evidence=None):
         f.update(state="resolved", value=value, basis=basis, confidence=confidence, evidence=evidence or {}, camera_pending=False)
 
-    def open_fact(self, name, item, camera_on):
+    def open_fact(self, name, item, camera_on, p0=False):
         d = self.kbf[name]
         if item["room"] in (d.get("not_rooms") or []):
             return
         fid = fact_key(name, d["scope"], item["item_id"], item["room"])
-        if any(f["fact_id"] == fid for f in self.s["facts"]):
+        old = next((f for f in self.s["facts"] if f["fact_id"] == fid), None)
+        if old:
+            if p0 and not old.get("p0"):
+                self.make_p0(old, camera_on)
             return
         f = {"fact_id": fid, "name": name, "scope": d["scope"], "item_id": item["item_id"] if d["scope"] == "item" else None,
              "room": item["room"], "ladder": d["ladder"], "idx": 0, "value": None, "confidence": None, "basis": None,
              "evidence": {}, "state": "open", "attempts": []}
+        if p0:
+            f.update(p0=True, ladder=self.p0_ladder(d))
         self.s["facts"].append(f)
         self.enter(f, camera_on)
         for val, pattern in (d.get("from_said") or {}).items():  # "a new floating small vanity" -> mount floating, 1 sink
             if item.get("said") and re.search(pattern, item["said"], re.I):
                 self.resolve(f, val, "said", evidence={"utterance": item["said"]})
                 break
+        sv = (self.s.get("survey") or {}).get(name)  # the camera survey already saw it
+        if sv and f["state"] != "resolved":
+            if d.get("numeric"):
+                f.update(state="open", pending_confirm=num_text(sv["value"]), evidence=sv["evidence"], camera_pending=False)
+            else:
+                self.resolve(f, sv["value"], "seen", 0.8, sv["evidence"])
 
     def normalize(self, name, val):
         d, t = self.kbf[name], str(val).strip().lower()
@@ -177,28 +229,79 @@ class Itemizer:
     def groups(self):
         return {self.tasks[i["task_id"]].get("group") for i in self.live_items() if i["task_id"] in self.tasks} - {None}
 
+    def is_size(self, name):
+        label = self.kbf[name]["label"]
+        return any(u in label for u in ("sq ft", "linear ft", "(ft)"))
+
     def add_item(self, task_id, said, camera_on, rule=None, basis="said", evidence=None):
         if self.has(task_id):
             return None
+        task = self.tasks[task_id]
         n = len(self.s["items"]) + 1
         item = {"item_id": f"it{n}", "task_id": task_id, "room": self.s["room"], "said": said, "status": "proposed",
-                "label": self.tasks[task_id]["label"], "rule_id": rule, "basis": basis, "evidence": evidence or {}}
+                "label": task["label"], "rule_id": rule, "basis": basis, "evidence": evidence or {}}
         self.s["items"].append(item)
-        for name in self.tasks[task_id]["facts"]:
-            self.open_fact(name, item, camera_on)
-        for name in ("finish_level", "water_damage", "timeline"):
+        p0 = set(task.get("p0") or []) | {c["qty"] for c in task["price"] if c.get("qty") in task["facts"] and self.is_size(c["qty"])}
+        for name in task["facts"]:
+            self.open_fact(name, item, camera_on, name in p0)
+        self.open_fact("finish_level", item, camera_on, not task.get("split"))
+        for name in ("water_damage", "timeline"):
             self.open_fact(name, item, camera_on)
         self.apply_implies()
         return item
 
-    def add_custom(self, words):
+    def add_custom(self, words, camera_on=False):
+        """Work the KB doesn't know: ask what comes out, what goes in, how big and what finish, so Apex can price it."""
         label = f"To be priced by Apex: {words}"
         if any(i["label"].lower() == label.lower() for i in self.live_items()):
             return None
         item = {"item_id": f"it{len(self.s['items']) + 1}", "task_id": "custom", "room": self.s["room"], "said": words, "status": "proposed",
                 "label": label, "rule_id": None, "basis": "said", "evidence": {}, "custom": True}
         self.s["items"].append(item)
+        for name in ("custom_out", "custom_in", "custom_size", "finish_level"):
+            self.open_fact(name, item, camera_on, True)
         return item
+
+    def priced_items(self):
+        return [i for i in self.live_items() if not i.get("custom") and not self.tasks.get(i["task_id"], {}).get("split")]
+
+    def p0_open(self):
+        live = {i["item_id"] for i in self.live_items()}
+        fs = [f for f in self.s["facts"] if f.get("p0") and f["state"] != "resolved" and (f.get("item_id") is None or f["item_id"] in live)]
+        return sorted(fs, key=lambda f: self.kbf[f["name"]].get("p0_rank", 3))
+
+    def ready(self):
+        return bool(self.priced_items()) and not self.p0_open()
+
+    def resolved_value(self, name, item_id):
+        return next((f["value"] for f in self.facts_named(name) if f.get("item_id") in (item_id, None) and f["state"] == "resolved"), None)
+
+    def custom_details(self, it):
+        return {"words": it["said"], "room": it["room"], "out": self.resolved_value("custom_out", it["item_id"]),
+                "in": self.resolved_value("custom_in", it["item_id"]), "size": self.resolved_value("custom_size", it["item_id"]),
+                "finish": self.value("finish_level"), "frames": it.get("frames") or []}
+
+    def apply_splits(self, camera_on):
+        """'Take out the tiles' -> floor, wall or both once answered; a 'no' to a vague-match confirm drops those items."""
+        added = []
+        for it in list(self.live_items()):
+            task = self.tasks.get(it["task_id"]) or {}
+            for name, targets in (task.get("split") or {}).items():
+                f = next((x for x in self.facts_named(name) if x.get("item_id") == it["item_id"] and x["state"] == "resolved"), None)
+                if not f or str(f["value"]) not in targets:
+                    continue
+                it["status"] = "removed"
+                added += [n for t in targets[str(f["value"])] if (n := self.add_item(t, it["said"], camera_on, basis=f["basis"], evidence=f.get("evidence")))]
+                for src, dst in (task.get("carry") or {}).items():
+                    v = self.resolved_value(src, it["item_id"])
+                    opts = [str(o) for o in self.kbf[dst].get("options") or []]
+                    for g in self.facts_named(dst):
+                        if v is not None and g["state"] != "resolved" and str(v) in opts:
+                            self.resolve(g, v, "said", evidence={"utterance": str(v)})
+            if it.get("confirm") and self.resolved_value(it["confirm"], None) == "no":
+                it["status"] = "removed"
+                added += [n for n in [self.add_custom(it.get("clause") or it["said"], camera_on)] if n]
+        return added
 
     def apply_implies(self):
         for it in self.live_items():
@@ -257,6 +360,11 @@ class Itemizer:
                         self.advance(f, camera_on, "rejected")
                         continue
                 if isinstance(val, str) and val.strip().lower() in UNKNOWN or val is None:
+                    if f.get("p0"):  # asked again a different way; after two "not sure"s take the usual answer as theirs
+                        f["unknowns"] = f.get("unknowns", 0) + 1
+                        if f["unknowns"] >= 2:
+                            self.resolve(f, self.kbf[name]["default"], "unsure", 0.5)
+                            continue
                     if f["state"] in ("open", "asked"):
                         self.advance(f, camera_on, "unknown")
                     continue
@@ -302,12 +410,30 @@ class Itemizer:
         return self._impact[f["fact_id"]]
 
     def worth_asking(self, f):
+        if self.kbf[f["name"]].get("always_ask"):
+            return True
         p, imp = self.kbf[f["name"]].get("priority"), self.impact(f)
         return imp >= MIN_ASK_IMPACT and (p == 1 or (p != 2 and imp >= PRIORITY_IMPACT))
 
     def question(self, f):
         d = self.kbf[f["name"]]
-        return (d.get("room_questions") or {}).get(f["room"]) or d["question"]
+        q = (d.get("room_questions") or {}).get(f["room"]) or d["question"]
+        it = next((i for i in self.s["items"] if i["item_id"] == f.get("item_id") and i.get("custom")), None)
+        return f"About the {it['said']}: {q[:1].lower()}{q[1:]}" if it else q
+
+    def ask_p0(self, f, camera_on, wants_price):
+        d, ch = self.kbf[f["name"]], self.channel(f)
+        f["attempts"].append({"channel": ch, "at": iso()})
+        if ch == "show" and camera_on and self.s["shows_used"] < MAX_SHOWS and not wants_price:
+            self.s["shows_used"] += 1
+            f["state"] = "waiting_on_camera"
+            return "show", d["show"], f
+        measure = d.get("numeric") and d["show"] and (ch == "measure" or not d["question"])
+        text = d["show"] if measure else self.question(f) or d["show"]
+        f["state"] = "asked"
+        if wants_price:
+            text = f"Just so the number means something: {text[:1].lower()}{text[1:]}"
+        return ("measure" if measure else "ask"), text, f
 
     def confirm_text(self, f):
         d, v = self.kbf[f["name"]], f["pending_confirm"]
@@ -323,13 +449,26 @@ class Itemizer:
 
     # --- next action -----------------------------------------------------------
     def next_action(self, camera_on, wants_price=False):
-        if wants_price:
-            return "price", "", None
-        open_f = [f for f in self.s["facts"] if f["state"] in ("open", "asked")]
-        conf = [f for f in open_f if f.get("pending_confirm") is not None]
-        if conf and self.s["asked"] < QUESTION_BUDGET:
-            self.s["asked"] += 1
+        """Must-ask (P0) facts first and never skipped; the 5-question budget only covers the rest, which take defaults."""
+        live = {i["item_id"] for i in self.live_items()}
+        open_f = [f for f in self.s["facts"] if f["state"] in ("open", "asked") and (f.get("item_id") is None or f["item_id"] in live)]
+        conf = sorted([f for f in open_f if f.get("pending_confirm") is not None], key=lambda f: not f.get("p0"))
+        if conf and (conf[0].get("p0") or (self.s["asked"] < QUESTION_BUDGET and not wants_price)):
+            self.s["asked"] += 0 if conf[0].get("p0") else 1
             return "confirm", self.confirm_text(conf[0]), conf[0]
+        p0 = [f for f in self.p0_open() if f.get("pending_confirm") is None]
+        ready = [f for f in p0 if f["state"] in ("open", "asked")]
+        if ready:
+            return self.ask_p0(ready[0], camera_on, wants_price)
+        if not wants_price:
+            out = self.next_optional(camera_on, [f for f in open_f if not f.get("p0")])
+            if out:
+                return out
+        if p0:  # only camera-waiting must-asks left: ask them directly
+            return self.ask_p0(p0[0], camera_on, wants_price)
+        return "price", "", None
+
+    def next_optional(self, camera_on, open_f):
         missed = [f for f in open_f if any(a.get("result") in ("not_found", "ambiguous") for a in f["attempts"])]
         for ch, pool in (("show", missed), ("ask", open_f), ("show", open_f), ("measure", open_f)):
             for f in pool:
@@ -343,7 +482,7 @@ class Itemizer:
                         self.assume(f)
                         continue
                     if self.s["asked"] >= QUESTION_BUDGET:
-                        return "price", "", None
+                        return None
                     self.s["asked"] += 1
                 if ch == "show":
                     self.s["shows_used"] += 1
@@ -353,13 +492,15 @@ class Itemizer:
                 d = self.kbf[f["name"]]
                 f["attempts"].append({"channel": ch, "at": iso()})
                 return ch, d["show"] if ch in ("show", "measure") else self.question(f), f
-        return "price", "", None
+        return None
 
     def finalize(self, camera_on):
         """Before pricing: every open fact takes its default (camera findings still waiting keep listening)."""
         added = []
         for _ in range(3):
             for f in self.s["facts"]:
+                if f.get("p0"):
+                    continue
                 if f.get("pending_confirm") is not None:
                     v = f.pop("pending_confirm")
                     f.update(state="assumed", value=float(v) if self.kbf[f["name"]].get("numeric") else v, basis="seen", from_camera=True)
@@ -387,9 +528,12 @@ class Itemizer:
         lines, trades = [], set()
         for it in self.live_items():
             if it.get("custom"):
-                lines.append({"key": it["item_id"], "label": it["label"], "amount": None, "basis": "said", "evidence": {}, "custom": True})
+                lines.append({"key": it["item_id"], "label": it["label"], "amount": None, "basis": "said", "evidence": {}, "custom": True,
+                              "details": self.custom_details(it)})
                 continue
             task = self.tasks[it["task_id"]]
+            if task.get("split"):
+                continue
             trades |= {t for t in task["tags"] if t in ("plumbing", "electrical", "gas", "structural", "shower")}
             amt = 0.0
             for c in task["price"]:
@@ -397,11 +541,11 @@ class Itemizer:
                     continue
                 base = c["tiers"][tier] if "tiers" in c else c["amount"]
                 qty = float(self.value(c["qty"], it["item_id"]) or 0) if c.get("qty") else 1
-                amt += base * qty * c.get("mult", 1)
+                amt += max(base * qty * c.get("mult", 1), c.get("min", 0))
             used = [f for f in self.s["facts"] if f.get("item_id") == it["item_id"] or (f["name"] in {c.get("qty") for c in task["price"]})]
             lines.append({"key": it["item_id"], "label": it["label"], "amount": int(round(amt)), "basis": it["basis"],
                           "evidence": it["evidence"], "facts": [{"name": f["name"], "value": f["value"], "basis": f["basis"]} for f in used]})
-        priced_items = [i for i in self.live_items() if not i.get("custom")]
+        priced_items = self.priced_items()
         rooms = {i["room"] for i in priced_items}
         if priced_items:
             lines.append({"key": "protection", "label": "Protection and cleanup", "amount": 450 * len(rooms), "basis": "assumed", "evidence": {}})
@@ -432,6 +576,27 @@ class Itemizer:
                 "drivers": [i["label"] for i in self.live_items()][:3], "deposit_percent": DEPOSIT_PCT,
                 "deposit_amount": int(round(total * DEPOSIT_PCT / 100.0))}
 
+    def scenario(self, contractor, priced):
+        """Big unknowns only a site visit settles: price the likely case, say what the other case costs."""
+        best = None
+        for name, texts in SCENARIOS.items():
+            if (name == "load_bearing" and not self.has("wall_removal")) or (name == "water_damage" and not self.facts_named(name)):
+                continue
+            cur = str(self.value(name)).lower()
+            if cur not in texts:
+                continue
+            twin = Itemizer(copy.deepcopy(self.s), (self.tasks, self.kbf, self.rules), self.contractor)
+            twin.s["force"] = {**(twin.s.get("force") or {}), name: FLIP[cur]}
+            for _ in range(3):
+                if not twin.apply_rules(False):
+                    break
+            twin.fill_defaults()
+            alt = twin.price(contractor)["total"]
+            diff = alt - priced["total"]
+            if abs(diff) > SCENARIO_MIN and (not best or abs(diff) > abs(best["diff"])):
+                best = {"fact": name, "total": alt, "diff": diff, "say": texts[cur].format(d=int(round(abs(diff), -2)))}
+        return best
+
     # --- plain-sentence camera insights ------------------------------------------
     def describe(self, f):
         d, v = self.kbf[f["name"]], f["value"]
@@ -449,18 +614,39 @@ class Itemizer:
         return text + (f" (+${change:,})" if change > 0 else f" (-${-change:,})" if change < 0 else "")
 
 
-def keyword_tasks(said, room, tasks):
-    t = (said or "").lower()
-    hits = []
-    for tid, task in tasks.items():
-        if task.get("auto") or (task["room"] and task["room"] != room):
-            continue
-        if any(re.search(p, t) for p in task["triggers"]):
-            hits.append(tid)
+def split_clauses(said):
+    out = [re.sub(r"^\s*(and|so|then|um|uh)\s+", "", c.strip(), flags=re.I).strip() for c in CLAUSES.split(said or "")]
+    return [c for c in out if c]
+
+
+def clause_hits(clause, room, tasks):
+    """Trigger matches for one clause; returns (task ids, the clause if it vaguely meant the sink area)."""
+    t = clause.lower()
+    hits = [tid for tid, task in tasks.items() if not task.get("auto") and task["room"] in (None, room) and any(re.search(p, t) for p in task["triggers"])]
+    drop = set()
     if "remove_vanity" in hits and "new_vanity" in hits and not re.search(r"\b(new|floating|swap|for an?|with an?)\b", t):
-        hits.remove("new_vanity")
+        drop.add("new_vanity")
+    if {"floor_tile", "wall_tile", "walk_in_shower", "backsplash", "flooring"} & set(hits):
+        drop.add("tile_work")
+    if {"wall_tile", "accent_wallpaper", "partition_check", "glass_panel_removal"} & set(hits):
+        drop.add("wall_removal")
+    if "vanity_light" in hits and not re.search(r"\b(fan|exhaust)\b", t):
+        drop.add("exhaust_fan_lights")
+    hits = [h for h in hits if h not in drop]
+    if room == "bathroom" and VAGUE_SINK.search(t) and not {"remove_vanity", "new_vanity", "faucet_replace"} & set(hits):
+        return hits + ["remove_vanity", "new_vanity"], clause
+    return hits, None
+
+
+def match_tasks(said, room, tasks):
+    hits, vague = [], None
+    for c in split_clauses(said):
+        h, v = clause_hits(c, room, tasks)
+        hits += [x for x in h if x not in hits]
+        vague = vague or v
+    t = (said or "").lower()
     keep = {}
-    other_floor = re.search(r"\b(hardwood|engineered|vinyl|laminate|carpet|lvp)\b", t)
+    other_floor = re.search(r"\b(hardwood|engineered|vinyl|laminate|carpet|lvp)\b", t) and room != "bathroom"
     for tid in hits:  # one task per group; the room-specific task beats the whole-house one
         g = tasks[tid].get("group") or tid
         prefer = tasks[tid]["room"] and not tasks[keep[g]]["room"] if g in keep else True
@@ -468,18 +654,17 @@ def keyword_tasks(said, room, tasks):
             prefer = tid == "flooring"
         if prefer:
             keep[g] = tid
-    return [tid for tid in hits if keep.get(tasks[tid].get("group") or tid) == tid]
+    return [tid for tid in hits if keep.get(tasks[tid].get("group") or tid) == tid], vague
+
+
+def keyword_tasks(said, room, tasks):
+    return match_tasks(said, room, tasks)[0]
 
 
 def unmatched_clauses(said, room, tasks):
-    """Parts of what the homeowner said that name work but match no task."""
-    out = []
-    for c in CLAUSES.split(said or ""):
-        c = re.sub(r"^\s*(and|so|then|um|uh)\s+", "", c.strip(), flags=re.I).strip()
-        if len(c.split()) < 3 or PRICE_WORDS.search(c) or not WORK_WORDS.search(c) or keyword_tasks(c, room, tasks):
-            continue
-        out.append(c[:120])
-    return out
+    """Clauses that name work but match no trigger (these go to the LLM, then to Apex)."""
+    return [c[:120] for c in split_clauses(said)
+            if len(c.split()) >= 3 and not PRICE_WORDS.search(c) and WORK_WORDS.search(c) and not clause_hits(c, room, tasks)[0]]
 
 
 async def get_session(lead):
@@ -523,6 +708,7 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
     if call and s.get("call_id") != call["id"]:  # the question budget is per call
         s.update(call_id=call["id"], asked=0)
     wants_price = bool(wants_price or PRICE_WORDS.search(said or ""))
+    said = re.sub(r"\bsync\b", "sink", said or "", flags=re.I)
     s["camera_on"] = camera_on
     s["room"] = detect_room(said, s["room"])
     for f in s["facts"]:  # asked twice and not answered -> next channel
@@ -531,20 +717,30 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
             if f["skips"] >= 2:
                 iz.advance(f, camera_on, "no answer")
     new, custom = [], []
-    if said and said.strip():
+    if said.strip():
         groups = iz.groups()
-        tids = [t for t in keyword_tasks(said, s["room"], iz.tasks) if (iz.tasks[t].get("group") or t) not in groups]
-        if not tids and not answers and not keyword_tasks(said, s["room"], iz.tasks):
-            tids = await llm.map_tasks(said, s["room"], {k: v["label"] for k, v in iz.tasks.items() if not v.get("auto") and v["room"] in (None, s["room"])})
-            if tids == ["needs_human"]:
-                tids = []
-        else:
-            custom = [it for c in unmatched_clauses(said, s["room"], iz.tasks) if (it := iz.add_custom(c))]
-        new = [it for tid in tids if (it := iz.add_item(tid, said, camera_on))]
-        if not new and not custom and not tids and not answers and not wants_price and not iz.live_items():
-            custom = [it for it in [iz.add_custom(said.strip()[:120])] if it] if WORK_WORDS.search(said) else []
-    for _ in range(2):
+        tids, vague = match_tasks(said, s["room"], iz.tasks)
+        tids = [t for t in tids if (iz.tasks[t].get("group") or t) not in groups]
+        catalog = {k: v["label"] for k, v in iz.tasks.items() if not v.get("auto") and v["room"] in (None, s["room"])}
+        for c in unmatched_clauses(said, s["room"], iz.tasks):  # triggers missed this clause: ask the LLM, else Apex prices it
+            ids = [t for t in await llm.map_tasks(c, s["room"], catalog) if t in catalog and t not in tids and (iz.tasks[t].get("group") or t) not in groups]
+            if ids:
+                tids += ids
+            elif (it := iz.add_custom(c, camera_on)):
+                custom.append(it)
+        for tid in tids:
+            it = iz.add_item(tid, said, camera_on)
+            if not it:
+                continue
+            new.append(it)
+            if vague and tid in ("remove_vanity", "new_vanity"):
+                it.update(confirm="vanity_plan", clause=vague)
+                iz.open_fact("vanity_plan", it, camera_on, True)
+        if not new and not custom and not tids and not answers and not wants_price and not iz.live_items() and WORK_WORDS.search(said):
+            custom = [it for it in [iz.add_custom(said.strip()[:120], camera_on)] if it]
+    for _ in range(3):
         iz.apply_answers(answers, camera_on)
+        new += iz.apply_splits(camera_on)
         new += iz.apply_rules(camera_on)
     iz.apply_implies()
     for it in new:
@@ -557,17 +753,23 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
     priced = None
     if action == "price":
         new += iz.finalize(camera_on)
+        if iz.p0_open():  # finalizing added work with its own must-ask facts
+            action, text, fact = iz.next_action(camera_on, wants_price)
     new += custom
     note = " ".join(f"I've noted {c['said']} for {contractor['name']} to price." for c in custom)
-    out = {"status": "needs_info", "next_action": action, "next_text": f"{note} {text}".strip(), "fact": fact["name"] if fact else "",
+    tips = " ".join(s.pop("suggest", []))
+    out = {"status": "needs_info", "next_action": action, "next_text": f"{note} {text} {tips}".strip(), "fact": fact["name"] if fact else "",
            "new_items": [i["label"] for i in new]}
     if action == "price":
-        if not iz.live_items():
-            out.update(next_action="ask", next_text="What work would you like done?")
+        priced = iz.price(contractor) if iz.priced_items() else None
+        if not priced or priced["total"] <= 0:  # never price an empty scope
+            ask = "Is there anything else you'd like done while we're at it?" if iz.live_items() else "What work would you like done?"
+            out.update(next_action="ask", next_text=f"{note} {ask}".strip(), fact="scope")
+            priced = None
         else:
-            priced = iz.price(contractor)
+            priced["if_not"] = iz.scenario(contractor, priced)
             s["last_total"] = priced["total"]
-            out.update(status="ok", next_text=note, **{k: priced[k] for k in ("total", "low", "high", "range_pct", "drivers", "deposit_percent", "deposit_amount", "assumptions")})
+            out.update(status="ok", next_text=f"{note} {tips}".strip(), **{k: priced[k] for k in ("total", "low", "high", "range_pct", "drivers", "deposit_percent", "deposit_amount", "assumptions", "if_not")})
             out["to_be_priced"] = [c["label"] for c in iz.live_items() if c.get("custom")]
     await save_session(s)
     out["insights"] = await claim_insights(lead["id"])
@@ -611,22 +813,124 @@ async def on_goal_result(lead, goal):
     if resolved or added:
         change = after - before or sum(line["amount"] or 0 for line in iz.price(contractor)["lines"] if line["key"] in {i["item_id"] for i in related})
         await add_insight(lead["id"], iz.insight(f, added + related, change), f["fact_id"])
-    priced = iz.price(contractor) if s.get("last_total") is not None and iz.live_items() else None
+    priced = iz.price(contractor) if s.get("last_total") is not None and iz.ready() else None
     if priced:
+        priced["if_not"] = iz.scenario(contractor, priced)
         s["last_total"] = priced["total"]
     await save_session(s)
-    version = (await save_itemized(lead, priced))["version"] if priced else None
-    return {"ok": True, "fact": f, "added": [i["label"] for i in added], "total_before": before, "total_after": after, "version": version}
+    q = await save_itemized(lead, priced) if priced else None
+    return {"ok": True, "fact": f, "added": [i["label"] for i in added], "total_before": before, "total_after": after, "version": q["version"] if q else None}
+
+
+async def resave(lead, s, iz, contractor):
+    """After a camera finding: a quote already given gets a new version if the price moved."""
+    priced = iz.price(contractor) if s.get("last_total") is not None and iz.ready() else None
+    if priced:
+        priced["if_not"] = iz.scenario(contractor, priced)
+        s["last_total"] = priced["total"]
+    await save_session(s)
+    if priced:
+        await save_itemized(lead, priced)
+
+
+async def on_survey(lead, data):
+    """One camera survey: fills matching facts, tells Alex what's visible, suggests (never adds) related jobs."""
+    s, kb = await get_session(lead), await load_kb()
+    contractor = await db.contractors.find_one({"id": lead["contractor_id"]}, {"_id": 0})
+    iz = Itemizer(s, kb, contractor)
+    hits = sorted(data.get("hits") or [], key=lambda h: -h.get("confidence", 0))
+    found, extra = {}, []
+    for h in hits:
+        key, _, ans = (h.get("label") or "").partition(":")
+        key, ans = key.strip().lower().replace(" ", "_"), ans.strip().lower()
+        ev = {**{k: h.get(k) for k in ("frame_url", "t_ms", "box", "label")}, "goal_id": data.get("goal_id")}
+        name = SURVEY_KEYS.get(key)
+        if name and ans and name not in found:
+            v = iz.normalize(name, ans)
+            if str(v) in [str(o) for o in kb[1][name].get("options") or []]:
+                found[name] = {"value": v, "evidence": ev}
+        elif key == "toilet" and ans and ans not in ("no", "none"):
+            extra.append("a toilet")
+        elif key == "tub_shower" and ans and ans not in ("no", "none"):
+            extra.append("a tub" if "tub" in ans else "a shower")
+    area = data.get("value")
+    if isinstance(area, (int, float)) and not isinstance(area, bool) and area > 0:
+        best = hits[0] if hits else {}
+        found["floor_area"] = {"value": float(area), "evidence": {k: best.get(k) for k in ("frame_url", "t_ms", "box", "label")}}
+    if not found and not extra:
+        return {"ok": False, "phrases": []}
+    s.update(survey={**(s.get("survey") or {}), **found}, survey_done=True)
+    for name, sv in found.items():
+        for f in iz.facts_named(name):
+            if f["state"] == "resolved" and f["basis"] in ("said", "measured", "unsure"):
+                continue
+            if kb[1][name].get("numeric"):
+                f.update(state="open", pending_confirm=num_text(sv["value"]), evidence=sv["evidence"], camera_pending=False)
+            else:
+                iz.resolve(f, sv["value"], "seen", 0.8, sv["evidence"])
+    iz.apply_rules(s.get("camera_on", False))
+    phrases = []
+    for name, sv in found.items():
+        tpl = SEEN_PHRASE.get(name)
+        tpl = tpl.get(str(sv["value"])) if isinstance(tpl, dict) else tpl
+        if tpl:
+            phrases.append("a medicine cabinet" if sv["value"] == "medicine cabinet" else tpl.format(v=sv["value"]))
+    phrases += extra
+    if phrases:
+        await add_insight(lead["id"], f"I can see {and_list(phrases)}", "survey")
+    for name, vals, task, tip in SUGGEST:
+        if name in found and (vals is None or found[name]["value"] in vals) and not iz.has(task) and task not in s.get("suggested", []):
+            s.setdefault("suggest", []).append(tip.format(v=found[name]["value"]))
+            s.setdefault("suggested", []).append(task)
+    await resave(lead, s, iz, contractor)
+    return {"ok": True, "phrases": phrases, "found": list(found)}
+
+
+async def on_custom_frames(lead, item_id, data):
+    s = await get_session(lead)
+    it = next((i for i in s["items"] if i["item_id"] == item_id), None)
+    hits = sorted(data.get("hits") or [], key=lambda h: -h.get("confidence", 0))[:3]
+    if it:
+        it["frames"] = [{"frame_url": h["frame_url"], "t_ms": h.get("t_ms"), "label": h.get("label")} for h in hits if h.get("frame_url")]
+        await save_session(s)
+
+
+async def price_custom(lead, item_id, label, tiers, words):
+    """The contractor prices a 'To be priced by Apex' line: it becomes a rate-card job, and this lead gets a new quote version."""
+    s, kb = await get_session(lead), await load_kb()
+    it = next((i for i in s["items"] if i["item_id"] == item_id and i.get("custom") and i["status"] != "removed"), None)
+    if not it:
+        return None
+    tid = "custom_" + (re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")[:40] or "job")
+    if tid in kb[0]:
+        tid += "_" + uuid.uuid4().hex[:4]
+    task = {"task_id": tid, "room": it["room"], "label": label, "facts": [], "price": [{"tiers": tiers, "mult": 1}],
+            "triggers": [rf"\b{re.escape(w)}\b" for w in words], "tags": [], "auto": False, "group": None,
+            "from_custom": {"words": it["said"], "lead_id": lead["id"], "details": Itemizer(s, kb).custom_details(it), "at": iso()}}
+    await db.kb_tasks.insert_one(dict(task))
+    kb[0][tid] = task
+    it.update(task_id=tid, label=label, custom=False, priced_from_custom=True)
+    contractor = await db.contractors.find_one({"id": lead["contractor_id"]}, {"_id": 0})
+    iz = Itemizer(s, kb, contractor)
+    priced = iz.price(contractor) if iz.priced_items() else None
+    if priced and priced["total"] > 0:
+        priced["if_not"] = iz.scenario(contractor, priced)
+        s["last_total"] = priced["total"]
+    await save_session(s)
+    q = await save_itemized(lead, priced) if priced else None
+    return {"task_id": tid, "quote": q}
 
 
 async def save_itemized(lead, priced):
-    """New quote version only when lines, total, range or assumptions change."""
+    """New quote version only when lines, total, range or assumptions change. Never a $0 quote."""
+    if not priced or priced["total"] <= 0:
+        return None
     q = await latest_quote(lead["id"])
     lines = [{k: v for k, v in line.items() if k != "facts"} for line in priced["lines"]]
     if q and q.get("source") == "itemizer" and [(i["label"], i["amount"]) for i in q["line_items"]] == [(i["label"], i["amount"]) for i in lines] \
-            and all(q.get(k) == priced[k] for k in ("total", "low", "high", "assumptions")):
+            and all(q.get(k) == priced.get(k) for k in ("total", "low", "high", "assumptions", "if_not")):
         return q
     status = "live" if lead["status"] == "walkthru_initiated" else "sent"
     return await save_quote(lead, lines, priced["total"], status, {
         "low": priced["low"], "high": priced["high"], "drivers": priced["drivers"], "assumptions": priced["assumptions"],
-        "range_pct": priced["range_pct"], "source": "itemizer"})
+        "range_pct": priced["range_pct"], "source": "itemizer", "if_not": priced.get("if_not")})

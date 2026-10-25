@@ -120,6 +120,8 @@ async def end_call(lead, transcript=None, auto_quote=True):
     await set_status(lead["id"], "walkthru_completed")
     lead = await get_lead(lead["id"])
     quote = await latest_quote(lead["id"])
+    if quote and (quote.get("total") or 0) <= 0:  # a $0 quote is never ready
+        quote = None
     if quote and auto_quote:
         await db.quotes.update_many({"lead_id": lead["id"], "status": "live"}, {"$set": {"status": "sent"}})
         await mark_quote_ready(lead)

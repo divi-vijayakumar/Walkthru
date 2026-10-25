@@ -5,6 +5,8 @@ import { api } from "@/shared/api";
 import { money, range } from "@/shared/format";
 import { when } from "@/dashboard/CallDetail";
 import { Badge } from "@/dashboard/PageShell";
+import { CustomLine } from "@/dashboard/CustomLine";
+import { IfNot } from "@/dashboard/NeedsPrice";
 
 export const QUOTE_STATUS = { live: ["In call", "teal"], sent: ["Sent", "accent"], accepted: ["Accepted", "green"], recalled: ["Recalled", "muted"] };
 
@@ -45,7 +47,7 @@ const Versions = ({ q, onPick }) => (
   </div>
 );
 
-export const QuoteDetail = ({ quoteId, onPick }) => {
+export const QuoteDetail = ({ quoteId, onPick, onChanged }) => {
   const [q, setQ] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { api.get(`/quotes/${quoteId}`).then((r) => setQ(r.data)).catch(() => toast.error("Couldn't load the quote")); }, [quoteId]);
@@ -62,12 +64,15 @@ export const QuoteDetail = ({ quoteId, onPick }) => {
       <p data-testid="quote-detail-total" className="mt-3 font-display text-[34px] font-bold leading-tight tabular">{money(q.total)}</p>
       <p className="text-[13px] text-wt-muted tabular">{range(q)} · deposit {q.deposit_pct}%, {money(q.deposit_amount)}{q.margin_pct != null ? ` · margin ${q.margin_pct}%` : ""}</p>
       <ul className="mt-3">
-        {q.line_items.map((i) => (
+        {q.line_items.map((i) => (i.custom ? (
+          <CustomLine key={i.key} leadId={q.lead_id} line={i} onPriced={(r) => { onChanged?.(); if (r.quote_id) onPick(r.quote_id); }} />
+        ) : (
           <li key={i.key} className="flex justify-between gap-3 border-t border-wt-line py-2 text-[14px]">
             <span>{i.label}</span><span className="font-semibold tabular">{i.amount == null ? "To be priced" : i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
           </li>
-        ))}
+        )))}
       </ul>
+      <IfNot ifNot={q.if_not} className="mt-2" />
       {q.assumptions?.length > 0 && (
         <ul data-testid="quote-detail-assumptions" className="mt-3 list-disc pl-5 text-[13px] text-wt-muted">{q.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
       )}

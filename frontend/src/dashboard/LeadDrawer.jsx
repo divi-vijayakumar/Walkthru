@@ -13,6 +13,7 @@ import { TranscriptDialog } from "@/dashboard/TranscriptDialog";
 import { SeenFrame } from "@/shared/SeenFrame";
 import { CallCard } from "@/dashboard/CallDetail";
 import { money, range } from "@/shared/format";
+import { IfNot, NeedsPrice } from "@/dashboard/NeedsPrice";
 
 const QuoteLines = ({ quote }) => (
   <div data-testid="drawer-quote" className="mt-5 rounded-xl border border-wt-line p-3.5">
@@ -28,6 +29,7 @@ const QuoteLines = ({ quote }) => (
         </li>
       ))}
     </ul>
+    <IfNot ifNot={quote.if_not} className="mt-2" />
   </div>
 );
 
@@ -87,6 +89,7 @@ export const LeadDrawer = ({ lead, now, onChanged }) => {
       <Journey lead={lead} />
       {lead.escalated && <TakeoverPrompt lead={lead} />}
       {lead.quote && <QuoteLines quote={lead.quote} />}
+      <NeedsPrice key={`${lead.id}-${lead.quote?.version || 0}`} leadId={lead.id} onChanged={onChanged} />
       <div className={`mt-5 grid gap-3 ${lead.live ? "grid-cols-2" : "grid-cols-1"}`}>
         {lead.live && <button data-testid="take-over-btn" onClick={() => post("take-over", "You're on it. Call the homeowner now.")}
           className="min-h-[44px] rounded-lg bg-wt-accent px-3 text-[15px] font-bold text-white transition-colors hover:bg-wt-accentDark">

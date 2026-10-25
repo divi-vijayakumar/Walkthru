@@ -31,6 +31,11 @@ export const QuoteScreen = ({ data, onTalk, onSign, busy }) => {
         </div>
         <p data-testid="quote-total" className="font-display text-[40px] font-bold leading-tight text-wt-ink tabular">{money(q.total)}</p>
         <LineItems quote={q} />
+        {q.if_not && (
+          <p data-testid="quote-if-not" className="mt-2 rounded-lg bg-wt-soft px-3 py-2 text-[14px] font-semibold text-wt-accent">
+            {q.if_not.say} That would make it {money(q.if_not.total)}.
+          </p>
+        )}
         <button data-testid="talk-to-change-btn" onClick={onTalk}
           className="mt-2 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-wt-line text-[16px] font-semibold text-wt-ink hover:border-wt-ink/30">
           <Mic className="h-4 w-4" /> Talk to change this

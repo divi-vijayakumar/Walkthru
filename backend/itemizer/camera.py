@@ -35,6 +35,13 @@ def max_goals():
     return int(os.environ.get("PERCIA_MAX_GOALS_PER_CALL") or 40)
 
 
+SURVEY_QUERY = ("List what is visible: sink type (pedestal, wall-mounted, vanity cabinet), toilet, tub or shower, mirror type, floor material and "
+                "tile size, wall finish (tile, paint, wallpaper), lights, and any water damage. Estimate the floor area. Give one hit per thing "
+                "you can see (up to 9), each label as 'key: answer' with key one of sink, toilet, tub_shower, mirror, floor, tile_size, walls, "
+                "lights, water_damage (e.g. 'sink: pedestal', 'mirror: framed', 'floor: tile', 'tile_size: 12 in', 'walls: paint', "
+                "'water_damage: no'). Put the floor area in value, in sq ft.")
+
+
 def unit_of(d):
     label = d["label"]
     return label[label.find("(") + 1: label.find(")")] if "(" in label else "count"
@@ -60,15 +67,18 @@ def at_camera(f, kbf):
 
 
 async def send_goals(call_session_id):
-    """Never raises; a slow or failed Percia never blocks the call."""
+    """On each stored clip and after update_scope: one camera survey until it has answers, frames for Apex-priced work,
+    and a goal per open camera fact. Never raises; a slow or failed Percia never blocks the call."""
     try:
         cs = await db.call_sessions.find_one({"id": call_session_id}, {"_id": 0, "lead_id": 1})
-        s = cs and await db.itemizer_sessions.find_one({"lead_id": cs["lead_id"]}, {"_id": 0})
-        if not s:
+        if not cs:
             return
+        lead_id = cs["lead_id"]
+        s = await db.itemizer_sessions.find_one({"lead_id": lead_id}, {"_id": 0}) or {}
         kbf = {f["fact_id"]: f async for f in db.kb_facts.find({}, {"_id": 0})}
-        facts = [f for f in s["facts"] if at_camera(f, kbf)]
-        if not facts:
+        facts = [f for f in s.get("facts", []) if at_camera(f, kbf)]
+        customs = [i for i in s.get("items", []) if i.get("custom") and i["status"] != "removed" and not i.get("frames")]
+        if not (facts or customs or not s.get("survey_done")):
             return
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(f"{media_url()}/api/sessions/{call_session_id}/media", params={"kind": "video"}, headers=headers())
@@ -78,27 +88,30 @@ async def send_goals(call_session_id):
                 return
             newest = clips[-1]["media_id"]
             budget = max_goals() - await db.itemizer_goals.count_documents({"call_session_id": call_session_id})
+            fresh = {"$or": [{"status": "sent"}, {"newest_media_id": newest}]}
             todo = []
+            if not s.get("survey_done") and not await db.itemizer_goals.find_one({"lead_id": lead_id, "kind": "survey", **fresh}):
+                todo.append(({"kind": "survey"}, SURVEY_QUERY))
+            for it in customs:
+                if not await db.itemizer_goals.find_one({"lead_id": lead_id, "kind": "custom", "item_id": it["item_id"], **fresh}):
+                    todo.append(({"kind": "custom", "item_id": it["item_id"]},
+                                 f"Find the frames that best show this: {it['said']}. Label each hit with a few words about what it shows."))
             for f in facts:
-                if len(todo) >= budget:
-                    break
-                if await db.itemizer_goals.find_one({"fact_id": f["fact_id"], "lead_id": cs["lead_id"],
-                                                     "$or": [{"status": "sent"}, {"newest_media_id": newest}]}):
-                    continue
-                todo.append(f)
-            await asyncio.gather(*(post_goal(client, cs, call_session_id, kbf[f["name"]], f, clips, newest) for f in todo))
+                if not await db.itemizer_goals.find_one({"fact_id": f["fact_id"], "lead_id": lead_id, **fresh}):
+                    d = kbf[f["name"]]
+                    todo.append(({"fact_id": f["fact_id"], "options": d.get("options") or [], "numeric": bool(d.get("numeric"))}, goal_query(d)))
+            await asyncio.gather(*(post_goal(client, cs, call_session_id, meta, q, clips, newest) for meta, q in todo[:max(budget, 0)]))
     except Exception as e:
         logger.warning("send_goals failed: %s", e)
 
 
-async def post_goal(client, cs, call_session_id, d, f, clips, newest):
-    """All open camera facts go out together so Percia judges them in one pass."""
+async def post_goal(client, cs, call_session_id, meta, query, clips, newest):
+    """All goals for a clip go out together so Percia judges them in one pass."""
     goal_id = f"g_{uuid.uuid4().hex}"
     await db.itemizer_goals.insert_one({
-        "goal_id": goal_id, "lead_id": cs["lead_id"], "call_session_id": call_session_id, "fact_id": f["fact_id"],
-        "options": d.get("options") or [], "numeric": bool(d.get("numeric")), "newest_media_id": newest,
-        "status": "sent", "created_at": iso()})
-    body = {"goal_id": goal_id, "session_id": call_session_id, "query": goal_query(d), "callback_url": f"{app_url()}/api/itemizer/percia/callback",
+        "goal_id": goal_id, "lead_id": cs["lead_id"], "call_session_id": call_session_id, "kind": "fact", "fact_id": None,
+        "options": [], "numeric": False, **meta, "newest_media_id": newest, "status": "sent", "created_at": iso()})
+    body = {"goal_id": goal_id, "session_id": call_session_id, "query": query, "callback_url": f"{app_url()}/api/itemizer/percia/callback",
             "media": [{k: c[k] for k in ("media_id", "url", "kind", "t_start_ms")} for c in clips]}
     try:
         res = await client.post(f"{percia_url()}/api/percia/goals", json=body, headers=headers())
@@ -145,6 +158,16 @@ async def handle_result(data):
     if not g:
         return False
     lead = await db.leads.find_one({"id": g["lead_id"]}, {"_id": 0})
+    if g.get("kind") == "custom":
+        await engine.on_custom_frames(lead, g["item_id"], data)
+        return True
+    if g.get("kind") == "survey":
+        if data.get("status") == "done" and data.get("result") in ("met", "ambiguous"):
+            out = await engine.on_survey(lead, data)
+            chips = [p[:1].upper() + p[1:] for p in out["phrases"][:3]]
+            if chips:
+                await db.call_sessions.update_one({"id": g["call_session_id"]}, {"$addToSet": {"chips": {"$each": chips}}})
+        return True
     value, best = answer_of(g, data)
     status = data.get("result") if data.get("status") == "done" else "not_found"
     if status in ("met", "ambiguous") and value is None:

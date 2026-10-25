@@ -80,12 +80,37 @@ FACTS = {
     "fixtures_moved": F("item", [A, X], "fixtures moved", 1, "How many fixtures are moving?", numeric=True),
     "gas_service": F("job", [A, X], "gas service", "yes", "Does the house have gas service already?"),
     "panel_label": F("job", [S, X], "panel amps", "200A", show="Could you show me the label on your electrical panel?"),
-    "floor_above": F("item", [A, X], "floor above", "no", "Is there another floor above that wall?"),
+    "floor_above": F("item", [A, X], "floor above", "no", "Is there a floor above this room?"),
     "beam_nearby": F("item", [C, X], "beam or posts nearby", "no", goal="Is there a beam or posts near this wall?"),
     "wall_utilities": F("item", [C, X], "utilities in the wall", 0, goal="Count outlets, switches or vents in this wall", numeric=True),
     "water_damage": F("job", [C, A, X], "water damage", "no", "Any leaks or soft spots you've noticed?", goal="Any stains, swelling, peeling paint or mold?"),
     "timeline": F("job", [A, X], "timeline", "in two months", "When would you like to start?"),
     "live_in": F("job", [A, X], "living in during work", "yes", "Will you be living there during the work?"),
+    "partition_kind": F("item", [C, A], "partition type", "full wall", "Is it a full wall, a shorter divider, or the glass by the shower?",
+                         goal="Is the divider in view a full-height wall, a half wall, or a glass panel?"),
+    "wall_replacement": F("item", [A], "what goes in place of the wall", "fully open", "What would you like in its place: fully open, a wide opening, or a half wall?"),
+    "wall_length": F("item", [C, M], "wall length (linear ft)", 10, "About how long is the wall, in feet?",
+                      show="If it's easy, walk along the wall and count your steps.", numeric=True),
+    "wall_floor_finish": F("item", [A], "floor where the wall stood", "patch",
+                            "Where the wall stood, should we patch the floor to match, or are you putting in new flooring?"),
+    "wall_central": F("item", [A, X], "wall near the middle of the house", "no", "Is this wall near the middle of the house?"),
+    "wall_outlets": F("item", [C, X], "outlets in the wall", "no", goal="Are there electrical outlets on this wall?"),
+    "wall_switches": F("item", [C, X], "switches in the wall", "no", goal="Are there light switches on this wall?"),
+    "wall_vents": F("item", [C, X], "vents in the wall", "no", goal="Are there heating or air vents on this wall?"),
+    "load_bearing": F("item", [X], "likely load-bearing (2+ clues)", "unlikely"),
+    "tile_replacement": F("item", [A], "what replaces the tile", "tile", "What would you like instead: new tile, vinyl plank, or something else?"),
+    "tile_where": F("item", [A], "which tiles", "floor", "Floor tiles, wall tiles, or both?"),
+    "vanity_plan": F("job", [A], "new vanity planned", "yes", "Just to check: by the sink area, do you mean a new vanity, the cabinet and sink together?"),
+    "tub_replacement": F("item", [A], "what replaces the tub", "shower", "What would you like in its place: a walk-in shower, a new tub, or nothing?"),
+    "mirror_type": F("room", [C, A, X], "mirror type", "framed", "Is the mirror framed, frameless, or a medicine cabinet?",
+                      goal="Is the mirror framed, frameless, or a medicine cabinet?"),
+    "sink_type": F("room", [C, X], "sink type", "vanity cabinet", goal="Is the sink a pedestal, a wall-mounted sink, or a vanity cabinet?"),
+    "wall_finish": F("room", [C, X], "wall finish", "paint", goal="Are the walls finished with tile, paint, or wallpaper?"),
+    "wallpaper_area": F("item", [M], "wallpaper area (sq ft)", 60, "About how wide is the accent wall, in feet? I'll assume it's 8 feet tall.",
+                         show="If it's easy, walk along the wall and count your steps; I'll assume it's 8 feet tall.", numeric=True, step=8),
+    "custom_out": F("item", [A], "what comes out", "", "What's coming out, if anything?"),
+    "custom_in": F("item", [A], "what goes in", "", "What goes in its place?"),
+    "custom_size": F("item", [A], "how big", "", "Roughly how big is it?"),
 }
 
 OPTIONS = {
@@ -118,7 +143,18 @@ OPTIONS.update({
     "paint_surfaces": ["walls", "ceilings", "both"], "fireplace_fuel": ["wood", "gas"], "fireplace_fuel_new": ["wood", "gas"],
     "what_below": ["slab", "crawlspace", "basement"], "gas_service": ["yes", "no"], "floor_above": ["yes", "no"], "live_in": ["yes", "no"],
     "wall_tile_height": ["wainscot", "ceiling"],
+    "partition_kind": ["full wall", "half wall", "glass"], "wall_replacement": ["fully open", "wide opening", "half wall"],
+    "wall_floor_finish": ["patch", "new floor"], "wall_central": ["yes", "no"], "wall_outlets": ["yes", "no"], "wall_switches": ["yes", "no"],
+    "wall_vents": ["yes", "no"], "load_bearing": ["likely", "unlikely"], "tile_replacement": ["tile", "vinyl", "engineered wood", "paint"],
+    "tile_where": ["floor", "wall", "both"], "vanity_plan": ["yes", "no"], "tub_replacement": ["shower", "tub", "nothing"],
+    "mirror_type": ["framed", "frameless", "medicine cabinet"], "sink_type": ["pedestal", "wall-mounted", "vanity cabinet"],
+    "wall_finish": ["tile", "paint", "wallpaper"],
 })
+CAMERA_GOALS["wall_length"] = ("Estimate the wall's length in feet. Measure it against the door (80 in tall) or the counter (36 in tall). "
+                               "Reply with value and unit ft.")
+RANK = {"replacing_vanity": 0, "floor_new": 0, "tile_replacement": 0, "tub_replacement": 0, "wall_replacement": 0, "cabinet_work": 0,
+        "counter_material_new": 0, "custom_out": 0, "custom_in": 1, "tile_where": 1, "partition_kind": 1, "vanity_plan": 1,
+        "new_vanity_mount": 2, "new_vanity_sinks": 2, "wall_length": 1, "wall_floor_finish": 2, "custom_size": 3, "finish_level": 4}
 EXTRA = {  # how each fact behaves in a call; all editable in Rate card and settings
     "replacing_vanity": {"synonyms": {"yes": "new", "replace": "new", "replacing": "new", "leave": "open", "leaving": "open", "no": "open", "nothing": "open"}},
     "new_vanity_mount": {"from_said": {"floating": r"\b(floating|wall[- ]?(mounted|hung))\b", "floor": r"\b(floor[- ]?standing|on the floor|freestanding)\b"},
@@ -133,8 +169,8 @@ EXTRA = {  # how each fact behaves in a call; all editable in Rate card and sett
                    "confirm": {"yes": "Looks like there's an exhaust fan in the ceiling. Is that right?", "no": "I don't see an exhaust fan. Is that right?"}},
     "water_damage": {"seen": {"yes": "I can see signs of water damage", "no": "No signs of water damage"}},
     "floor_type": {"seen": "The floor is {v} now", "room_questions": {"bathroom": "What's on the floor now: tile, vinyl or wood?"}},
-    "floor_new": {"room_questions": {"bathroom": "What new floor would you like: tile, vinyl plank or engineered wood?"},
-                  "synonyms": {"vinyl plank": "vinyl", "lvp": "vinyl", "engineered": "engineered wood", "wood": "engineered wood"},
+    "floor_new": {"room_questions": {"bathroom": "What would you like instead: new tile, vinyl plank, or something else?"},
+                  "synonyms": {"vinyl plank": "vinyl", "lvp": "vinyl", "engineered": "engineered wood", "wood": "engineered wood", "new tile": "tile"},
                   "from_said": {"hardwood": r"\bhardwood\b", "engineered wood": r"\bengineered\b", "carpet": r"\bcarpet(ing)?\b",
                                 "vinyl": r"\b(vinyl|lvp|laminate)\b", "tile": r"\btile (floor|flooring)\b"}},
     "floor_area": {"confirm": "Looks like the floor is about {v} square feet. Does that sound right?", "seen": "The floor is about {v} square feet"},
@@ -150,7 +186,26 @@ EXTRA = {  # how each fact behaves in a call; all editable in Rate card and sett
     "wall_utilities": {"can_answer": False},
     "house_built": {"alts": [1970, 2005]},
     "timeline": {"alts": ["asap"]},
+    "floor_above": {"always_ask": True},
+    "wall_central": {"always_ask": True},
+    "partition_kind": {"synonyms": {"full": "full wall", "shorter": "half wall", "short": "half wall", "half": "half wall", "glass panel": "glass"},
+                       "seen": {"full wall": "The divider looks like a full-height wall", "half wall": "The divider looks like a half wall",
+                                "glass": "The divider looks like a glass shower panel"}},
+    "wall_replacement": {"synonyms": {"opening": "wide opening", "wide": "wide opening", "fully": "fully open", "open": "fully open",
+                                       "nothing": "fully open", "half": "half wall"}},
+    "wall_floor_finish": {"synonyms": {"new flooring": "new floor", "new": "new floor", "match": "patch"}},
+    "tile_replacement": {"synonyms": {"vinyl plank": "vinyl", "lvp": "vinyl", "wood": "engineered wood", "new tile": "tile", "tiles": "tile"}},
+    "tile_where": {"synonyms": {"floor tiles": "floor", "floors": "floor", "wall tiles": "wall", "walls": "wall"}},
+    "tub_replacement": {"synonyms": {"walk-in": "shower", "walk in": "shower", "new tub": "tub", "bathtub": "tub", "bath": "tub"}},
+    "mirror_type": {"priority": 2, "seen": {"framed": "It's a framed mirror", "frameless": "It's a frameless mirror", "medicine cabinet": "It's a medicine cabinet"}},
+    "sink_type": {"priority": 2, "seen": "It's a {v} sink",
+                  "synonyms": {"wall mounted": "wall-mounted", "wall": "wall-mounted", "vanity": "vanity cabinet", "cabinet": "vanity cabinet"}},
+    "wall_finish": {"priority": 2, "seen": {"tile": "The walls are tiled", "paint": "The walls are painted", "wallpaper": "The walls have wallpaper"},
+                    "synonyms": {"painted": "paint", "tiled": "tile"}},
+    "wall_outlets": {"priority": 2}, "wall_switches": {"priority": 2}, "wall_vents": {"priority": 2},
 }
+for _k, _v in RANK.items():
+    EXTRA.setdefault(_k, {})["p0_rank"] = _v
 for _k, _v in OPTIONS.items():
     FACTS[_k]["options"] = _v
 for _k, _v in CAMERA_GOALS.items():
@@ -159,31 +214,34 @@ for _k, _v in EXTRA.items():
     FACTS[_k].update(_v)
 
 
-def P(amount=None, tiers=None, qty=None, mult=1, when=None, label=None):
-    return {k: v for k, v in dict(amount=amount, tiers=tiers, qty=qty, mult=mult, when=when, label=label).items() if v is not None}
+def P(amount=None, tiers=None, qty=None, mult=1, when=None, label=None, min=None):
+    return {k: v for k, v in dict(amount=amount, tiers=tiers, qty=qty, mult=mult, when=when, label=label, min=min).items() if v is not None}
 
 
-def T(room, label, facts, price, triggers=(), tags=(), auto=False, group=None, because=None, implies=None):
+def T(room, label, facts, price, triggers=(), tags=(), auto=False, group=None, because=None, implies=None, **more):
+    """more: p0 (must-ask facts), split (fact -> value -> tasks it turns into), carry (fact -> fact copied onto the new tasks)."""
     d = {"room": room, "label": label, "facts": list(facts), "price": price, "triggers": list(triggers), "tags": list(tags), "auto": auto, "group": group}
-    return {**d, **({"because": because} if because else {}), **({"implies": implies} if implies else {})}
+    return {**d, **({"because": because} if because else {}), **({"implies": implies} if implies else {}), **more}
 
 
 TASKS = {
     # bathroom
-    "remove_vanity": T("bathroom", "Remove vanity", ["sinks", "vanity_mount", "replacing_vanity"],
+    "remove_vanity": T("bathroom", "Remove vanity", ["sinks", "vanity_mount", "replacing_vanity", "sink_type"],
                        [P(350, when={"sinks": ["1"]}), P(550, when={"sinks": ["2"]})],
-                       [r"\b(sink|vanity)\b.*\b(gone|out|remove|rip|tear|replace)", r"\b(remove|rip out|tear out|get rid of|swap|replace)\b.*\b(sink|vanity)"], ["removal"]),
+                       [r"\b(sink|vanity)\b.*\b(gone|out|remove|rip|tear|replace)", r"\b(remove|rip out|tear out|take out|get rid of|swap|replace)\b.*\b(sink|vanity)"], ["removal"],
+                       p0=["replacing_vanity"]),
     "new_vanity": T("bathroom", "New vanity", ["new_vanity_sinks", "new_vanity_mount"],
                     [P(650, when={"new_vanity_sinks": ["1"]}, label="install"), P(950, when={"new_vanity_sinks": ["2"]}, label="install"),
                      P(tiers=[900, 1800, 3500], when={"new_vanity_sinks": ["1"]}, label="vanity and top"),
                      P(tiers=[1600, 3200, 6000], when={"new_vanity_sinks": ["2"]}, label="vanity and top"),
                      P(tiers=[250, 450, 800], qty="new_vanity_sinks", label="faucets")],
                     [r"\bnew\b[\w\s]{0,25}\bvanity\b", r"\b(double|floating) vanity\b", r"\b(swap|replace)\b.*\bvanity\b.*\b(for|with)\b"], ["plumbing"],
-                    implies={"replacing_vanity": "new"}),
+                    implies={"replacing_vanity": "new"}, p0=["new_vanity_mount", "new_vanity_sinks"]),
     "retile_under_vanity": T("bathroom", "Retile under old vanity", [], [P(650)], auto=True, because="the tile under it will need patching"),
-    "remove_tub": T("bathroom", "Remove tub", ["tub_type", "cast_iron"],
+    "remove_tub": T("bathroom", "Remove tub", ["tub_type", "cast_iron", "tub_replacement"],
                     [P(650, when={"tub_type": ["alcove"]}), P(350, when={"tub_type": ["freestanding"]}), P(900, when={"tub_type": ["drop-in"]})],
-                    [r"\btub\b.*\b(gone|out|remove)", r"\b(remove|rip out|instead of)\b.*\btub\b"], ["removal"]),
+                    [r"\btub\b.*\b(gone|out|remove)", r"\b(remove|rip out|instead of)\b.*\btub\b"], ["removal"], p0=["tub_replacement"]),
+    "new_tub": T("bathroom", "New tub", [], [P(900, label="install"), P(tiers=[800, 1600, 3500], label="tub")], [r"\bnew (bath)?tub\b"], ["plumbing"]),
     "cast_iron_tub": T("bathroom", "Cast iron tub removal", [], [P(300)], auto=True, because="the heavy cast iron tub takes extra removal work"),
     "walk_in_shower": T("bathroom", "Walk-in shower", ["shower_size", "shower_glass", "shower_niche", "curbless"],
                         [P(6800, when={"shower_size": ["standard"]}, label="build"), P(8900, when={"shower_size": ["large", "bigger"]}, label="build"),
@@ -193,11 +251,31 @@ TASKS = {
                         [r"walk[- ]?in", r"\bshower\b"], ["shower", "plumbing"]),
     "curbless_upgrade": T("bathroom", "Curbless shower upgrade", [], [P(1800)], auto=True),
     "toilet": T("bathroom", "Toilet", ["moving"], [P(450, label="install"), P(tiers=[300, 550, 1100], label="toilet")], [r"\btoilet\b"]),
-    "floor_tile": T("bathroom", "Floor tile", ["floor_type", "floor_area"], group="floor", price=
+    "floor_tile": T("bathroom", "Bathroom floor", ["floor_type", "floor_new", "floor_area"], group="floor", price=
                     [P(2, qty="floor_area", when={"floor_type": ["vinyl"]}, label="removal"), P(4, qty="floor_area", when={"floor_type": ["tile", "wood"]}, label="removal"),
-                     P(12, qty="floor_area", label="install"), P(tiers=[4, 8, 15], qty="floor_area", label="tile")],
-                    triggers=[r"\b(floors?|flooring|tile floor|new floor|vinyl plank|hardwood|laminate)\b"], tags=["removal"]),
-    "wall_tile": T("bathroom", "Wall tile", ["wall_tile_height", "wall_tile_area"], [P(tiers=[18, 28, 45], qty="wall_tile_area")], [r"\bwall tile\b", r"\btile (the )?walls?\b"]),
+                     P(12, qty="floor_area", when={"floor_new": ["tile"]}, label="tile install"), P(tiers=[4, 8, 15], qty="floor_area", when={"floor_new": ["tile"]}, label="tile"),
+                     P(tiers=[7, 9, 12], qty="floor_area", when={"floor_new": ["vinyl"]}, label="vinyl plank"),
+                     P(tiers=[12, 16, 22], qty="floor_area", when={"floor_new": ["engineered wood", "hardwood"]}, label="wood"),
+                     P(tiers=[5, 7, 10], qty="floor_area", when={"floor_new": ["carpet"]}, label="carpet")],
+                    triggers=[r"\b(floors?|flooring|tile floor|floor tiles?|new floor|vinyl plank|hardwood|laminate)\b"], tags=["removal"], p0=["floor_new"]),
+    "wall_tile": T("bathroom", "Wall tile", ["wall_tile_height", "wall_tile_area"], [P(tiers=[18, 28, 45], qty="wall_tile_area")],
+                   [r"\bwall tiles?\b", r"\btile (the )?walls?\b", r"\btiled walls?\b"]),
+    "tile_work": T("bathroom", "Tile work (floor or wall, to confirm)", ["tile_replacement", "tile_where"], [P(0)], [r"\btiles?\b", r"\btiling\b"],
+                   p0=["tile_replacement", "tile_where"], split={"tile_where": {"floor": ["floor_tile"], "wall": ["wall_tile"], "both": ["floor_tile", "wall_tile"]}},
+                   carry={"tile_replacement": "floor_new"}),
+    "partition_check": T("bathroom", "Partition (wall or glass, to confirm)", ["partition_kind"], [P(0)], [r"\bpartition\b", r"\bdivider\b"],
+                         p0=["partition_kind"], split={"partition_kind": {"full wall": ["wall_removal"], "half wall": ["wall_removal"], "glass": ["glass_panel_removal"]}}),
+    "glass_panel_removal": T("bathroom", "Remove glass shower panel", [], [P(450)],
+                             [r"\b(remove|take out|get rid of)\b.*\bglass\b", r"\bglass (shower )?(panel|door)\b.*\b(out|gone|remove)\b"], ["removal"]),
+    "mirror_replace": T("bathroom", "Replace mirror or medicine cabinet", ["mirror_type"], [P(250, label="install"), P(tiers=[150, 400, 900], label="mirror")],
+                        [r"\bmirrors?\b", r"\bmedicine cabinets?\b"]),
+    "vanity_light": T("bathroom", "Vanity light fixture", [], [P(225, label="install"), P(tiers=[150, 300, 600], label="fixture")],
+                      [r"\bvanity lights?\b", r"\blights? (fixture )?(over|above) the (sink|mirror|vanity)\b"], ["electrical"]),
+    "faucet_replace": T("bathroom", "Faucet replacement", ["sink_type"], [P(250, label="install"), P(tiers=[150, 350, 700], label="faucet")],
+                        [r"\bfaucets?\b"], ["plumbing"]),
+    "bath_accessories": T("bathroom", "Bath accessories (towel bar, ring, paper holder)", [], [P(tiers=[150, 300, 550], label="per set")],
+                          [r"\btowel (bars?|rings?|racks?)\b", r"\bpaper holders?\b", r"\baccessor(y|ies)\b"]),
+    "accent_wallpaper": T(None, "Accent wallpaper", ["wallpaper_area"], [P(tiers=[6, 9, 14], qty="wallpaper_area")], [r"\bwall ?paper\b", r"\baccent wall\b"]),
     "exhaust_fan_lights": T("bathroom", "Exhaust fan and lights", ["fan_exists", "fan_vents_outside", "new_lights"],
                             [P(650, when={"fan_exists": ["no"]}, label="new fan"), P(400, when={"fan_exists": ["yes"], "fan_vents_outside": ["no"]}, label="duct to outside"),
                              P(225, qty="new_lights", label="light install"), P(tiers=[150, 300, 600], qty="new_lights", label="fixtures")],
@@ -253,10 +331,18 @@ TASKS = {
     "circuit_120": T(None, "New 120 V circuit", [], [P(450)], auto=True, tags=["electrical"]),
     "circuit_240": T(None, "New 240 V circuit", [], [P(900)], auto=True, tags=["electrical"]),
     "panel_upgrade": T(None, "Panel upgrade allowance", ["panel_label"], [P(2500)], auto=True, tags=["electrical"]),
-    "wall_removal": T(None, "Wall removal", ["floor_above", "beam_nearby", "wall_utilities"],
-                      [P(2500, when={"floor_above": ["no"], "beam_nearby": ["no"]}, label="not likely load-bearing"),
-                       P(6800, when={"floor_above": ["yes"]}, label="engineer and beam allowance"), P(6800, when={"floor_above": ["no"], "beam_nearby": ["yes"]}, label="engineer and beam allowance"),
-                       P(800, qty="wall_utilities", label="utilities in the wall")], [r"\bwall\b.*\b(gone|out|remove|open)", r"\b(remove|knock down|take out|open up)\b.*\bwall\b"], ["structural", "removal"]),
+    "wall_removal": T(None, "Wall removal", ["wall_replacement", "wall_length", "wall_floor_finish", "floor_above", "wall_central", "beam_nearby",
+                                              "wall_outlets", "wall_switches", "wall_vents"], [P(2500, label="remove the wall")],
+                      [r"\bpartition\b", r"\bdivider\b", r"\bopen (it |this |things )?up\b", r"\bopen concept\b", r"\bknock(ing)? (it |this |that )?(down|out)\b",
+                       r"\bwall\b.*\b(gone|out|remove|open|down)\b", r"\b(remove|knock down|take out|tear down|get rid of|open up)\b.*\bwall\b"],
+                      ["structural", "removal"], p0=["wall_replacement", "wall_length", "wall_floor_finish"]),
+    "engineer_beam": T(None, "Engineer and beam allowance", [], [P(6800)], auto=True, tags=["structural"],
+                       because="it's likely load-bearing, so I'm holding an engineer and beam allowance"),
+    "relocate_outlets": T(None, "Relocate outlets", [], [P(800)], auto=True, tags=["electrical"], because="the outlets on that wall need to move"),
+    "relocate_switches": T(None, "Relocate switches", [], [P(800)], auto=True, tags=["electrical"], because="the switches on that wall need to move"),
+    "relocate_vents": T(None, "Relocate vents", [], [P(800)], auto=True, because="the vent on that wall needs to move"),
+    "floor_patch_wall": T(None, "Patch floor where the wall stood", [], [P(45, qty="wall_length", min=450, label="per linear ft")], auto=True),
+    "ceiling_patch": T(None, "Patch and paint ceiling", [], [P(450)], auto=True),
     "hvac_vent_move": T(None, "HVAC vent move", [], [P(450)], auto=True),
     "asbestos_test": T(None, "Asbestos test", [], [P(400)], auto=True),
     "lead_safe": T(None, "Lead-safe work", [], [P(600)], auto=True),
@@ -300,7 +386,19 @@ RULES = [
     R("panel_upgrade", "panel_upgrade", ["circuit_240"], [], {"panel_label": ["full", "100A"]}, note="New circuits and a 100 A or full panel"),
     R("water_damage", "water_damage_allowance", [], [], {"water_damage": ["yes"]}, note="Allowance, listed as an assumption until the site visit"),
     R("live_in_kitchen", "temp_kitchen", ["cabinets"], [], {"live_in": ["yes"]}, note="Living in during kitchen work"),
+    R("tub_to_shower", "walk_in_shower", ["remove_tub"], [], {"tub_replacement": ["shower"]}, note="Walk-in shower where the tub was"),
+    R("tub_to_tub", "new_tub", ["remove_tub"], [], {"tub_replacement": ["tub"]}, note="New tub where the old one was"),
+    R("load_bearing", "engineer_beam", ["wall_removal"], [], {"load_bearing": ["likely"]},
+      note="Two or more clues (floor above, middle of the house, beam or posts) mean likely load-bearing"),
+    R("wall_outlets", "relocate_outlets", ["wall_removal"], [], {"wall_outlets": ["yes"]}, note="Outlets in the wall, $800"),
+    R("wall_switches", "relocate_switches", ["wall_removal"], [], {"wall_switches": ["yes"]}, note="Switches in the wall, $800"),
+    R("wall_vents", "relocate_vents", ["wall_removal"], [], {"wall_vents": ["yes"]}, note="Vents in the wall, $800"),
+    R("wall_floor_patch", "floor_patch_wall", ["wall_removal"], ["flooring"], {"wall_floor_finish": ["patch"]}, note="No new flooring planned"),
+    R("wall_new_floor", "flooring", ["wall_removal"], [], {"wall_floor_finish": ["new floor"]}, note="New flooring where the wall stood"),
+    R("wall_ceiling", "ceiling_patch", ["wall_removal"], note="Every wall removal patches and paints the ceiling"),
 ]
+KB_VERSION = 3
+REPLACE = {"tasks": {"floor_tile", "wall_removal"}, "facts": {"floor_above", "floor_new"}}
 
 DRIVERS = [
     ("water_damage", "Water damage, leaks, mold", "Camera watches for stains, swelling, peeling paint and mold; ask \"Any leaks or soft spots you've noticed?\"", "Water damage allowance $1,800, listed as an assumption"),
@@ -325,11 +423,32 @@ METHODS = [
 ]
 
 
+async def migrate_kb():
+    """Adds new KB entries and new behaviour fields without touching prices, labels and wording the owner edited."""
+    keep = {"tasks": ("label", "price"), "facts": ("label", "question", "show", "default", "priority")}
+    for kind, coll, key, docs in (("tasks", "kb_tasks", "task_id", TASKS), ("facts", "kb_facts", "fact_id", FACTS)):
+        for k, v in docs.items():
+            doc = {key: k, **v}
+            if k in REPLACE[kind]:
+                await db[coll].replace_one({key: k}, doc, upsert=True)
+                continue
+            await db[coll].update_one({key: k}, {"$set": {f: x for f, x in doc.items() if f not in keep[kind]},
+                                                 "$setOnInsert": {f: doc[f] for f in keep[kind] if f in doc}}, upsert=True)
+    for r in RULES:
+        await db.kb_rules.update_one({"rule_id": r["rule_id"]}, {"$set": {k: v for k, v in r.items() if k != "note"}, "$setOnInsert": {"note": r["note"]}}, upsert=True)
+    await db.meta.update_one({"_id": "kb"}, {"$set": {"version": KB_VERSION}}, upsert=True)
+
+
 async def seed_kb(force=False):
     if not force and await db.kb_tasks.count_documents({}):
+        meta = await db.meta.find_one({"_id": "kb"}) or {}
+        if meta.get("version", 1) < KB_VERSION:
+            await migrate_kb()
         return
-    for c in ("kb_tasks", "kb_facts", "kb_rules"):
+    await db.kb_tasks.delete_many({"from_custom": {"$exists": False}})
+    for c in ("kb_facts", "kb_rules"):
         await db[c].delete_many({})
+    await db.meta.update_one({"_id": "kb"}, {"$set": {"version": KB_VERSION}}, upsert=True)
     await db.kb_tasks.insert_many([{"task_id": k, **v} for k, v in TASKS.items()])
     await db.kb_facts.insert_many([{"fact_id": k, **v} for k, v in FACTS.items()])
     await db.kb_rules.insert_many(RULES + [{"rule_id": f"driver_{d[0]}", "kind": "driver", "name": d[1], "how": d[2], "effect": d[3]} for d in DRIVERS]

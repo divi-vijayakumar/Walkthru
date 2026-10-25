@@ -51,6 +51,8 @@ def build_quote_pdf(quote: dict, lead: dict, contractor: dict) -> bytes:
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(table)
+    if quote.get("if_not"):
+        story += [Spacer(1, 12), p(f"{quote['if_not']['say']} That would make the total {usd(quote['if_not']['total'])}.", 10.5, ACCENT, True)]
     if quote.get("assumptions"):
         story += [Spacer(1, 18), p("Assumptions", 11, bold=True), Spacer(1, 4)]
         story += [p(f"- {a}", 10, MUTED) for a in quote["assumptions"]]

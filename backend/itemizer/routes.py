@@ -1,11 +1,11 @@
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from auth.routes import require_user
 from core.db import db
 from core import flow
 from itemizer import engine, camera
-from itemizer.kb import seed_kb
+from itemizer.kb import seed_kb, load_kb
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 KINDS = {"tasks": ("kb_tasks", "task_id"), "facts": ("kb_facts", "fact_id"), "rules": ("kb_rules", "rule_id")}
@@ -61,6 +61,12 @@ class TurnIn(BaseModel):
     answers: dict = {}
     camera_on: bool = False
     wants_price: bool = False
+
+
+class PriceCustomIn(BaseModel):
+    label: str = Field(min_length=2, max_length=80)
+    tiers: list[float] = Field(min_length=3, max_length=3)
+    match: str = Field(default="", max_length=200)
 
 
 class GoalIn(BaseModel):
@@ -125,6 +131,29 @@ async def goal_result(lead_id: str, body: GoalIn):
     if not out["ok"]:
         raise HTTPException(404, out["error"])
     return out
+
+
+@router.get("/itemizer/{lead_id}/custom")
+async def custom_lines(lead_id: str):
+    """'To be priced by Apex' work waiting for the contractor, with what the homeowner said and the best camera frames."""
+    lead = await flow.get_lead(lead_id)
+    s, kb = await engine.get_session(lead), await load_kb()
+    iz = engine.Itemizer(s, kb)
+    return {"items": [{"item_id": i["item_id"], "label": i["label"], **iz.custom_details(i)} for i in iz.live_items() if i.get("custom")]}
+
+
+@router.post("/itemizer/{lead_id}/items/{item_id}/price")
+async def price_custom(lead_id: str, item_id: str, body: PriceCustomIn):
+    if any(t < 0 for t in body.tiers) or not any(body.tiers):
+        raise HTTPException(422, "Prices must be zero or more, and at least one above zero")
+    words = [w.strip().lower() for w in body.match.split(",") if len(w.strip()) >= 3][:6]
+    if not words:
+        raise HTTPException(422, "Add at least one word or phrase that should match this job next time")
+    out = await engine.price_custom(await flow.get_lead(lead_id), item_id, body.label.strip(), [round(t, 2) for t in body.tiers], words)
+    if not out:
+        raise HTTPException(404, "That line isn't waiting for a price")
+    return {"task_id": out["task_id"], "quote_id": out["quote"]["id"] if out["quote"] else None,
+            "total": out["quote"]["total"] if out["quote"] else None}
 
 
 @router.post("/itemizer/{lead_id}/reset")

@@ -28,9 +28,10 @@ export default function QuotesPage() {
     setOpen(id);
     if (window.innerWidth < 1280) setTimeout(() => document.getElementById("quote-aside")?.scrollIntoView({ behavior: "smooth" }), 50);
   };
+  const load = () => api.get("/quotes").then((r) => setData(r.data)).catch(() => setData({ quotes: [], totals: {} }));
   useEffect(() => {
     document.title = "Quotes · Walkthru";
-    api.get("/quotes").then((r) => setData(r.data)).catch(() => setData({ quotes: [], totals: {} }));
+    load();
   }, []);
   const rows = useMemo(() => (data?.quotes || []).filter((q) => (!latestOnly || q.latest) && (filter === "all" || q.status === filter)), [data, filter, latestOnly]);
   const t = data?.totals || {};
@@ -59,7 +60,7 @@ export default function QuotesPage() {
           </table>
         </div>
         <aside id="quote-aside" className="rounded-2xl border border-wt-line bg-white p-4">
-          {open ? <QuoteDetail key={open} quoteId={open} onPick={setOpen} /> : <p className="text-[14px] text-wt-muted">Pick a quote to see its lines and download the PDF.</p>}
+          {open ? <QuoteDetail key={open} quoteId={open} onPick={pick} onChanged={load} /> : <p className="text-[14px] text-wt-muted">Pick a quote to see its lines and download the PDF.</p>}
         </aside>
       </div>
     </PageShell>
