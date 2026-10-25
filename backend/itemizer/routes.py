@@ -41,6 +41,8 @@ def kb_problem(kind, doc, tasks, facts):
             return "Ladder steps must be camera, show, ask, measure or assume"
         if "default" not in doc or not all(isinstance(doc.get(k), str) for k in ("question", "show")) or not isinstance(doc.get("goals"), list):
             return "A fact needs default, question, show and goals"
+        if doc.get("priority") not in (None, 1, 2):
+            return "Priority must be empty (automatic), 1 (must ask before pricing) or 2 (never blocks the price)"
     elif doc.get("kind") == "rule":
         if doc.get("add") not in tasks or not all(isinstance(doc.get(k), list) for k in ("has", "lacks")) \
                 or not all(isinstance(doc.get(k), dict) for k in ("facts", "lt")):
@@ -58,6 +60,7 @@ class TurnIn(BaseModel):
     said: str = ""
     answers: dict = {}
     camera_on: bool = False
+    wants_price: bool = False
 
 
 class GoalIn(BaseModel):
@@ -105,13 +108,13 @@ async def kb_reset():
 @router.get("/itemizer/{lead_id}")
 async def session(lead_id: str):
     lead = await flow.get_lead(lead_id)
-    return await engine.get_session(lead)
+    return {**await engine.get_session(lead), "insights": await engine.list_insights(lead_id)}
 
 
 @router.post("/itemizer/{lead_id}/turn")
 async def dev_turn(lead_id: str, body: TurnIn):
     lead = await flow.get_lead(lead_id)
-    out, priced = await engine.turn(lead, body.said, body.answers, body.camera_on)
+    out, priced = await engine.turn(lead, body.said, body.answers, body.camera_on, body.wants_price)
     camera.after_turn(lead)
     return {**out, "lines": priced["lines"] if priced else []}
 
@@ -128,4 +131,5 @@ async def goal_result(lead_id: str, body: GoalIn):
 async def reset(lead_id: str):
     await flow.get_lead(lead_id)
     await db.itemizer_sessions.delete_one({"lead_id": lead_id})
+    await db.itemizer_insights.delete_many({"lead_id": lead_id})
     return {"reset": True}

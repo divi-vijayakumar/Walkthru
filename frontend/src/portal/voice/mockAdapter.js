@@ -26,6 +26,8 @@ export function createMockAdapter({ token, data, mode = "first", chat = false })
   let stream = null;
   let timer = null;
   let replyResolve = null;
+  const camera = [];
+  const sayCamera = async () => { while (camera.length && !stopped) await say(camera.shift()); };
 
   const sleep = (ms) => new Promise((r) => { timer = setTimeout(r, ms); });
   const emit = (role, text) => {
@@ -88,9 +90,10 @@ export function createMockAdapter({ token, data, mode = "first", chat = false })
         return false;
       }
       for (const ins of r.insights || []) await say(ins);
+      await sayCamera();
       if (r.status === "ok") { ctx.last = r; ctx.quote = r; return true; }
       await say(r.next_text);
-      const [text, value] = scope.replies[r.fact] || ["I'm not sure.", "unknown"];
+      const [text, value] = r.next_action === "confirm" ? ["Yes, that's right.", "yes"] : scope.replies[r.fact] || ["I'm not sure.", "unknown"];
       await userTurn(text);
       args = { said: "", answers: { [r.fact]: chat ? ctx.lastUser : value }, camera_on: false };
     }
@@ -139,6 +142,7 @@ export function createMockAdapter({ token, data, mode = "first", chat = false })
     },
     stop: finish,
     setMuted(m) { stream?.getAudioTracks().forEach((t) => { t.enabled = !m; }); },
+    injectInsight(text) { if (!stopped) camera.push(`Quick camera note: ${text.replace(/\.$/, "")}.`); },
     sendText(text) { if (replyResolve && text.trim()) { const r = replyResolve; replyResolve = null; r(text.trim()); } },
     onCaption: captions.add,
     onEnd: ends.add,

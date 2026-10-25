@@ -6,6 +6,7 @@ from core.db import db, iso, get_contractor
 from core.quotes import latest_quote
 from core import flow
 from vapi.routes import read_message, run_tool_calls, parse_transcript
+from itemizer.engine import claim_insights
 
 router = APIRouter(prefix="/api/portal")
 
@@ -40,10 +41,11 @@ def voice_config():
 
 
 @router.get("/{token}")
-async def portal(token: str):
+async def portal(token: str, live: bool = False):
     lead = await flow.lead_by_token(token)
     contractor = await get_contractor()
     active = {"lead_id": lead["id"], "void": {"$ne": True}}
+    session = await flow.active_session(lead["id"])
     return {
         "lead": {"name": lead["name"], "first_name": flow.first_name(lead), "ask": lead["ask"], "phone": lead["phone"],
                  "status": lead["status"], "quote_pending": lead.get("quote_pending", False),
@@ -52,7 +54,8 @@ async def portal(token: str):
         "quote": await latest_quote(lead["id"]),
         "contract": await db.contracts.find_one(active, {"_id": 0}, sort=[("created_at", -1)]),
         "payment": await db.payments.find_one(active, {"_id": 0}, sort=[("created_at", -1)]),
-        "session": await flow.active_session(lead["id"]),
+        "session": session,
+        "insights": await claim_insights(lead["id"]) if live and session else [],
         "voice": voice_config(),
         "payments_test_mode": os.environ.get("STRIPE_MODE") == "test",
     }

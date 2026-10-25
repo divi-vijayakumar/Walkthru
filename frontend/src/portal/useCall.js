@@ -23,22 +23,24 @@ export const useCallFeed = (adapter, token, onEnded) => {
   return { caption, lines, prompt };
 };
 
-export const useLiveQuote = (token, initial) => {
+export const useLiveQuote = (token, initial, adapter) => {
   const [quote, setQuote] = useState(initial);
   const [chips, setChips] = useState([]);
   useEffect(() => {
     const id = setInterval(() => {
-      api.get(`/portal/${token}`).then((r) => {
+      api.get(`/portal/${token}`, { params: { live: 1 } }).then((r) => {
         setQuote(r.data.quote);
         setChips(r.data.session?.chips || []);
+        (r.data.insights || []).forEach((text) => adapter?.injectInsight?.(text));
       }).catch(() => {});
     }, 1500);
     return () => clearInterval(id);
-  }, [token]);
+  }, [token, adapter]);
   return { quote, chips };
 };
 
 const CLIP_MS = 10000;
+const FIRST_CLIP_MS = 5000;
 const MIME = typeof MediaRecorder === "undefined" ? null
   : ["video/webm;codecs=vp8", "video/webm", "video/mp4"].find((m) => MediaRecorder.isTypeSupported(m)) || "";
 
@@ -58,6 +60,7 @@ const useClipRecorder = (on, token, streamRef) => {
   useEffect(() => {
     if (!on || MIME === null) { return undefined; }
     let stopped = false;
+    let seq = 0;
     let rec = null;
     let timer = null;
     const begin = async () => {
@@ -76,7 +79,7 @@ const useClipRecorder = (on, token, streamRef) => {
           next();
         };
         rec.start();
-        timer = setTimeout(() => { if (rec.state !== "inactive") rec.stop(); }, CLIP_MS);
+        timer = setTimeout(() => { if (rec.state !== "inactive") rec.stop(); }, seq++ === 0 ? FIRST_CLIP_MS : CLIP_MS);
       };
       next();
     };

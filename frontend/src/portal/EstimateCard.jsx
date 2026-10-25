@@ -26,7 +26,7 @@ export const EstimateCard = ({ quote, contractor }) => (
                 {i.label}
                 <SeenFrame item={i} />                {i.is_new && <span className="rounded bg-wt-soft px-1.5 text-[11px] font-bold text-wt-accentDark">NEW</span>}
               </span>
-              <span className="font-bold tabular">{i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
+              <span className="font-bold tabular">{i.amount == null ? "To be priced" : i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
             </li>
           ))}
         </ul>

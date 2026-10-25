@@ -159,7 +159,7 @@ async def reset():
 
 SIM_NAME = {"$regex": "^\\s*dhivya\\s+vijayakumar\\s*$", "$options": "i"}
 LEAD_DATA = ("call_sessions", "quotes", "pricing_states", "contracts", "payments", "payment_transactions", "followups",
-             "sms_log", "itemizer_sessions", "itemizer_goals", "media")
+             "sms_log", "itemizer_sessions", "itemizer_goals", "itemizer_insights", "media")
 
 
 @router.post("/dev/simulate-dhivya")

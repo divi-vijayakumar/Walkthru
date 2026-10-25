@@ -47,6 +47,11 @@ export function createVapiAdapter({ token, data, mode = "first" }) {
       setTimeout(finish, 1500);
     },
     setMuted(m) { vapi.setMuted(m); },
+    injectInsight(text) {
+      if (ended) return;
+      vapi.send({ type: "add-message", message: { role: "system",
+        content: `Camera update: ${text.replace(/\.$/, "")}. Mention it naturally at the next pause; don't interrupt the homeowner.` } });
+    },
     onCaption: captions.add,
     onEnd: ends.add,
     onPrompt: () => () => {},

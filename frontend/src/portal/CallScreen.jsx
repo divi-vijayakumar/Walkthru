@@ -35,7 +35,7 @@ export const CallScreen = ({ data, token, adapter, onEnded }) => {
   const [muted, setMuted] = useState(false);
   const [secs, setSecs] = useState(0);
   const { caption } = useCallFeed(adapter, token, onEnded);
-  const { quote, chips } = useLiveQuote(token, data.quote);
+  const { quote, chips } = useLiveQuote(token, data.quote, adapter);
   const camera = useCamera(token);
 
   useEffect(() => {

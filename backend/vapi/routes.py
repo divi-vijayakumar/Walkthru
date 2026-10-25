@@ -56,7 +56,7 @@ async def tool_update_scope(lead, args, mode):
     session = await flow.active_session(lead["id"])  # Alex can't see the camera; the portal's /call/camera is the truth
     cam = session.get("camera_on") if session else None
     cam = bool(args.get("camera_on")) if cam is None else bool(cam)
-    out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, cam)
+    out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, cam, bool(args.get("wants_price")))
     camera.after_turn(lead)
     if priced:
         out["version"] = (await save_itemized(lead, priced))["version"]
@@ -86,7 +86,7 @@ async def itemizer_adjust(lead, args, mode):
         answers, say = {"timeline": f"{args.get('timeline_weeks', 8)} weeks"}, "Timeline updated."
     else:
         return {"status": "needs_human", "say": "Describe scope changes with update_scope."}
-    out, priced = await itemizer_turn(lead, "", answers, False)
+    out, priced = await itemizer_turn(lead, "", answers, False, True)
     if not priced:
         return {**out, "say": say}
     q = await save_itemized(lead, priced)

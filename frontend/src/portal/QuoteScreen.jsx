@@ -9,7 +9,7 @@ export const LineItems = ({ quote }) => (
     {quote.line_items.map((i) => (
       <li key={i.key} className="flex items-center justify-between gap-3 border-t border-wt-line py-2.5 text-[15px]">
         <span className="flex items-center gap-2">{i.label}<SeenFrame item={i} /></span>
-        <span className="font-bold tabular">{i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
+        <span className="font-bold tabular">{i.amount == null ? "To be priced" : i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
       </li>
     ))}
   </ul>

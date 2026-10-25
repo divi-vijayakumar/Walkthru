@@ -38,7 +38,7 @@ async def init():
 
 async def _drain(session_id):
     try:
-        await asyncio.sleep(0.4)  # let goals sent together share one pass
+        await asyncio.sleep(0.8)  # let goals sent together share one pass
         while True:
             goals = await db.percia_goals.find({"session_id": session_id, "status": "queued"}, {"_id": 0}).to_list(50)
             if not goals:

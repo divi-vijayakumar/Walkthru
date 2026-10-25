@@ -15,7 +15,7 @@ from itemizer import engine
 
 logger = logging.getLogger("itemizer.camera")
 callback_router = APIRouter(prefix="/api/itemizer")
-CLIPS_PER_GOAL = 2
+CLIPS_PER_GOAL = 1
 POLL_AFTER_S, GIVE_UP_S = 15, 600
 
 
@@ -42,6 +42,8 @@ def unit_of(d):
 
 def goal_query(d):
     q = (d.get("goals") or [""])[0]
+    if "reply with" in q.lower():
+        return q
     if d.get("options"):
         return f"{q} Start each hit label with the answer, one of: {', '.join(d['options'])}, then a colon and a few words (e.g. '{d['options'][0]}: ...')."
     if d.get("numeric"):
@@ -51,7 +53,8 @@ def goal_query(d):
 
 def at_camera(f, kbf):
     ch = f["ladder"][f["idx"]] if f["idx"] < len(f["ladder"]) else "assume"
-    return ch in ("camera", "show") and f["state"] in ("open", "asked", "waiting_on_camera") and (kbf.get(f["name"], {}).get("goals"))
+    return ch in ("camera", "show") and (f["state"] in ("open", "asked", "waiting_on_camera") or (f["state"] == "assumed" and f.get("camera_pending"))) \
+        and (kbf.get(f["name"], {}).get("goals"))
 
 
 async def send_goals(call_session_id):
@@ -72,26 +75,37 @@ async def send_goals(call_session_id):
             if not clips:
                 return
             newest = clips[-1]["media_id"]
+            budget = max_goals() - await db.itemizer_goals.count_documents({"call_session_id": call_session_id})
+            todo = []
             for f in facts:
-                if await db.itemizer_goals.count_documents({"call_session_id": call_session_id}) >= max_goals():
-                    return
+                if len(todo) >= budget:
+                    break
                 if await db.itemizer_goals.find_one({"fact_id": f["fact_id"], "lead_id": cs["lead_id"],
                                                      "$or": [{"status": "sent"}, {"newest_media_id": newest}]}):
                     continue
-                d = kbf[f["name"]]
-                goal_id = f"g_{uuid.uuid4().hex}"
-                await db.itemizer_goals.insert_one({
-                    "goal_id": goal_id, "lead_id": cs["lead_id"], "call_session_id": call_session_id, "fact_id": f["fact_id"],
-                    "options": d.get("options") or [], "numeric": bool(d.get("numeric")), "newest_media_id": newest,
-                    "status": "sent", "created_at": iso()})
-                body = {"goal_id": goal_id, "session_id": call_session_id, "query": goal_query(d), "callback_url": f"{app_url()}/api/itemizer/percia/callback",
-                        "media": [{k: c[k] for k in ("media_id", "url", "kind", "t_start_ms")} for c in clips]}
-                res = await client.post(f"{percia_url()}/api/percia/goals", json=body, headers=headers())
-                if res.status_code != 202:
-                    logger.warning("percia refused goal %s: %s", goal_id, res.status_code)
-                    await db.itemizer_goals.update_one({"goal_id": goal_id}, {"$set": {"status": "failed"}})
+                todo.append(f)
+            await asyncio.gather(*(post_goal(client, cs, call_session_id, kbf[f["name"]], f, clips, newest) for f in todo))
     except Exception as e:
         logger.warning("send_goals failed: %s", e)
+
+
+async def post_goal(client, cs, call_session_id, d, f, clips, newest):
+    """All open camera facts go out together so Percia judges them in one pass."""
+    goal_id = f"g_{uuid.uuid4().hex}"
+    await db.itemizer_goals.insert_one({
+        "goal_id": goal_id, "lead_id": cs["lead_id"], "call_session_id": call_session_id, "fact_id": f["fact_id"],
+        "options": d.get("options") or [], "numeric": bool(d.get("numeric")), "newest_media_id": newest,
+        "status": "sent", "created_at": iso()})
+    body = {"goal_id": goal_id, "session_id": call_session_id, "query": goal_query(d), "callback_url": f"{app_url()}/api/itemizer/percia/callback",
+            "media": [{k: c[k] for k in ("media_id", "url", "kind", "t_start_ms")} for c in clips]}
+    try:
+        res = await client.post(f"{percia_url()}/api/percia/goals", json=body, headers=headers())
+        ok = res.status_code == 202
+    except Exception:
+        ok = False
+    if not ok:
+        logger.warning("percia refused goal %s", goal_id)
+        await db.itemizer_goals.update_one({"goal_id": goal_id}, {"$set": {"status": "failed"}})
 
 
 def after_turn(lead):
@@ -133,7 +147,7 @@ async def handle_result(data):
     status = data.get("result") if data.get("status") == "done" else "not_found"
     if status in ("met", "ambiguous") and value is None:
         status = "not_found"
-    goal = {"fact_id": g["fact_id"], "status": status, "confidence": best.get("confidence", 0.8 if status == "met" else 0.5),
+    goal = {"fact_id": g["fact_id"], "status": status, "confidence": best.get("confidence", 0.6 if g["numeric"] else 0.8 if status == "met" else 0.5),
             "value": None if value is None else str(int(value) if isinstance(value, float) and value.is_integer() else value),
             "frame_url": best.get("frame_url"), "t_ms": best.get("t_ms"), "goal_id": g["goal_id"], "box": best.get("box"), "label": best.get("label")}
     await engine.on_goal_result(lead, goal)
