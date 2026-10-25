@@ -53,7 +53,10 @@ async def tool_estimate(lead, args, mode):
 async def tool_update_scope(lead, args, mode):
     if mode == "pending":
         return {"status": "pending", "say": "Pricing is not available right now."}
-    out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, bool(args.get("camera_on")))
+    session = await flow.active_session(lead["id"])  # Alex can't see the camera; the portal's /call/camera is the truth
+    cam = session.get("camera_on") if session else None
+    cam = bool(args.get("camera_on")) if cam is None else bool(cam)
+    out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, cam)
     camera.after_turn(lead)
     if priced:
         out["version"] = (await save_itemized(lead, priced))["version"]
