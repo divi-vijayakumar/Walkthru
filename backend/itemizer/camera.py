@@ -52,6 +52,8 @@ def goal_query(d):
 
 
 def at_camera(f, kbf):
+    if f["state"] in ("open", "asked", "assumed") and f.get("camera_pending") and kbf.get(f["name"], {}).get("goals"):
+        return True
     ch = f["ladder"][f["idx"]] if f["idx"] < len(f["ladder"]) else "assume"
     return ch in ("camera", "show") and (f["state"] in ("open", "asked", "waiting_on_camera") or (f["state"] == "assumed" and f.get("camera_pending"))) \
         and (kbf.get(f["name"], {}).get("goals"))

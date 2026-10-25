@@ -41,7 +41,7 @@ def leads(s):
     yield make
     s.post(f"{API}/kb/reset")
     for lead in made.values():
-        for c in ("itemizer_sessions", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
+        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
             _db[c].delete_many({"lead_id": lead["id"]})
         _db.leads.delete_one({"id": lead["id"]})
 
@@ -163,10 +163,9 @@ def test_gate3_ask_when_camera_off(s, leads):
     reset(s, lid)
     r = turn(s, lid, "I want this sink gone", G3_ANS, False)
     print(r)
-    if r["next_text"] != ASK_Q:
-        goal(s, lid, "vanity_mount@it1", "not_found")
-        r = turn(s, lid, "", {}, False)
-    assert r["next_action"] == "ask" and r["next_text"] == ASK_Q
+    # iteration 11 rule: vanity mount moves the price < $1,000 -> never asked; camera off -> default + assumption
+    assert r["next_action"] == "price" and r["status"] == "ok" and ASK_Q not in r["next_text"]
+    assert "Assumed vanity mount: floor" in r["assumptions"]
 
 
 def test_gate3_neither_assume(s, leads):
@@ -214,8 +213,9 @@ def test_gate4_kitchen_hood_and_fuel(s, leads):
     texts = [t for _, _, t in asked]
     assert "Is your stove gas or electric?" in texts
     assert not any("downdraft" in t.lower() or "chimney" in t.lower() for t in texts)
-    hood = [t for f, _, t in asked if f == "hood_type"]
-    assert hood == ["Does the fan sit above the stove, or pop up from the cooktop?"]
+    # iteration 11 rule: hood type/venting move the price < $1,000 (or can't be answered) -> never asked
+    assert not [f for f, a, _ in asked if f in ("hood_type", "hood_vents_outside") and a == "ask"]
+    assert len(asked) <= 5
     assert any(ln["label"] == "New 240 V circuit" for ln in r["lines"])
 
 
@@ -289,7 +289,8 @@ def test_update_scope_versions_adjust_followup(leads):
     assert requests.post(f"{API}/portal/{lead['portal_token']}/call/start").status_code == 200
     a = portal_tool(lead, "update_scope", {"said": "I want this sink gone", "answers": G3_ANS, "camera_on": False})
     print(a)
-    assert a["status"] == "needs_info" and a["next_text"] == ASK_Q
+    # iteration 11 rule: vanity mount is not priority-1 -> priced right away
+    assert a["status"] == "ok" and isinstance(a["version"], int) and ASK_Q not in a["next_text"]
     b = portal_tool(lead, "update_scope", {"said": "", "answers": {"vanity_mount": "floor"}, "camera_on": False})
     print(b)
     assert b["status"] == "ok" and isinstance(b["version"], int)

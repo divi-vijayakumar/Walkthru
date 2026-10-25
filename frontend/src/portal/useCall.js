@@ -28,7 +28,7 @@ export const useLiveQuote = (token, initial, adapter) => {
   const [chips, setChips] = useState([]);
   useEffect(() => {
     const id = setInterval(() => {
-      api.get(`/portal/${token}`, { params: { live: 1 } }).then((r) => {
+      api.get(`/portal/${token}`, { params: adapter?.injectInsight ? { live: 1 } : {} }).then((r) => {
         setQuote(r.data.quote);
         setChips(r.data.session?.chips || []);
         (r.data.insights || []).forEach((text) => adapter?.injectInsight?.(text));

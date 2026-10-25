@@ -59,7 +59,7 @@ def lead(s):
     _db.percia_goals.delete_many({"$or": [{"session_id": {"$in": sids}}, {"goal_id": {"$in": goal_ids}}]})
     _db.percia_frames.delete_many({"goal_id": {"$in": goal_ids}})
     _db.media.delete_many({"session_id": {"$in": sids}})
-    for c in ("itemizer_sessions", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups", "pricing_states"):
+    for c in ("itemizer_sessions", "itemizer_goals", "itemizer_insights", "quotes", "sms_log", "call_sessions", "followups", "pricing_states"):
         _db[c].delete_many({"lead_id": ld["id"]})
     _db.leads.delete_one({"id": ld["id"]})
 

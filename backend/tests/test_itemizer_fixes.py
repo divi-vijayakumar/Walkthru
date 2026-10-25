@@ -42,7 +42,7 @@ def L(s):
     yield make
     s.post(f"{API}/kb/reset")
     for lead in made.values():
-        for c in ("itemizer_sessions", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
+        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
             _db[c].delete_many({"lead_id": lead["id"]})
         _db.leads.delete_one({"id": lead["id"]})
 
@@ -280,7 +280,8 @@ def test_unanswered_reasked_once_then_advances(s, L):
     assert f["state"] == "asked"
     turn(s, lid, "", {"sinks": "1"}, False)
     f = fact(s, lid, "replacing_vanity")
-    assert f["state"] == "assumed" and f["value"] == "new", f
+    # iteration 11: assumed 'new' adds New vanity, whose implies then resolve replacing_vanity = new
+    assert f["state"] in ("assumed", "resolved") and f["value"] == "new", f
 
 
 def test_not_sure_advances_immediately(s, L):
@@ -289,7 +290,7 @@ def test_not_sure_advances_immediately(s, L):
     turn(s, lid, "I want this sink gone", {}, False)
     turn(s, lid, "", {"replacing_vanity": "not sure"}, False)
     f = fact(s, lid, "replacing_vanity")
-    assert f["state"] == "assumed", f
+    assert f["state"] in ("assumed", "resolved") and f["value"] == "new" and f["attempts"][-1].get("result") == "unknown", f
 
 
 # FIX 8

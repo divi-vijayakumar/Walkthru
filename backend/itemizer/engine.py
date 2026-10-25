@@ -99,7 +99,7 @@ class Itemizer:
 
     def assume(self, f, camera_pending=False):
         d = self.kbf[f["name"]]
-        f.update(state="assumed", value=d["default"], basis="assumed", confidence=0.5, camera_pending=camera_pending,
+        f.update(state="assumed", value=d["default"], basis="assumed", confidence=0.5, camera_pending=camera_pending or f.get("camera_pending", False),
                  site_visit=d.get("can_answer") is False)
 
     def enter(self, f, camera_on):
@@ -109,6 +109,10 @@ class Itemizer:
                 self.assume(f)
                 return
             if ch == "ask" and self.kbf[f["name"]].get("can_answer") is False:  # homeowners can't know this: show or default
+                f["idx"] += 1
+                continue
+            if ch == "camera" and not camera_on:  # move on now; a later clip can still answer it
+                f["camera_pending"] = True
                 f["idx"] += 1
                 continue
             if ch == "show" and not (camera_on and self.s["shows_used"] < MAX_SHOWS):
@@ -200,7 +204,7 @@ class Itemizer:
         for it in self.live_items():
             for name, val in (self.tasks.get(it["task_id"], {}).get("implies") or {}).items():
                 for f in self.facts_named(name):
-                    if f["state"] != "resolved":
+                    if f["state"] not in ("resolved", "assumed"):
                         self.resolve(f, val, "said", evidence={"implied_by": it["label"]})
 
     def rule_ok(self, r):
@@ -456,9 +460,13 @@ def keyword_tasks(said, room, tasks):
     if "remove_vanity" in hits and "new_vanity" in hits and not re.search(r"\b(new|floating|swap|for an?|with an?)\b", t):
         hits.remove("new_vanity")
     keep = {}
+    other_floor = re.search(r"\b(hardwood|engineered|vinyl|laminate|carpet|lvp)\b", t)
     for tid in hits:  # one task per group; the room-specific task beats the whole-house one
         g = tasks[tid].get("group") or tid
-        if g not in keep or (tasks[tid]["room"] and not tasks[keep[g]]["room"]):
+        prefer = tasks[tid]["room"] and not tasks[keep[g]]["room"] if g in keep else True
+        if g == "floor" and other_floor and g in keep:  # a stated non-tile material needs the Flooring task
+            prefer = tid == "flooring"
+        if prefer:
             keep[g] = tid
     return [tid for tid in hits if keep.get(tasks[tid].get("group") or tid) == tid]
 
@@ -559,7 +567,7 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False):
         else:
             priced = iz.price(contractor)
             s["last_total"] = priced["total"]
-            out.update(status="ok", next_text=note, **{k: priced[k] for k in ("total", "low", "high", "drivers", "deposit_percent", "deposit_amount", "assumptions")})
+            out.update(status="ok", next_text=note, **{k: priced[k] for k in ("total", "low", "high", "range_pct", "drivers", "deposit_percent", "deposit_amount", "assumptions")})
             out["to_be_priced"] = [c["label"] for c in iz.live_items() if c.get("custom")]
     await save_session(s)
     out["insights"] = await claim_insights(lead["id"])
@@ -593,8 +601,16 @@ async def on_goal_result(lead, goal):
         iz.advance(f, s.get("camera_on", False), "not_found")
     added = iz.apply_rules(s.get("camera_on", False))
     after = iz.price(contractor)["total"] if iz.live_items() else 0
+    related = []
+    if resolved:  # items already added from this fact's default are now backed by the camera
+        for it in iz.live_items():
+            r = next((r for r in iz.rules if r["rule_id"] == it.get("rule_id")), None)
+            if r and f["name"] in r["facts"] and it not in added:
+                it.update(basis="seen", evidence=ev)
+                related.append(it)
     if resolved or added:
-        await add_insight(lead["id"], iz.insight(f, added, after - before), f["fact_id"])
+        change = after - before or sum(line["amount"] or 0 for line in iz.price(contractor)["lines"] if line["key"] in {i["item_id"] for i in related})
+        await add_insight(lead["id"], iz.insight(f, added + related, change), f["fact_id"])
     priced = iz.price(contractor) if s.get("last_total") is not None and iz.live_items() else None
     if priced:
         s["last_total"] = priced["total"]
