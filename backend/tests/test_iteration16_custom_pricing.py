@@ -37,7 +37,7 @@ def L(s):
         return made[key]
     yield make
     for lead in made.values():
-        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups", "pricing_states"):
+        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "itemizer_tips", "quotes", "sms_log", "call_sessions", "followups", "pricing_states"):
             _db[c].delete_many({"lead_id": lead["id"]})
         _db.leads.delete_one({"id": lead["id"]})
     _db.kb_tasks.delete_many({"task_id": {"$regex": "^custom_test_it16"}})
@@ -87,7 +87,8 @@ def test_price_custom_then_next_homeowner(s, L):
     lead = L("first")
     lid = lead["id"]
     r = drive(s, lid, turn(s, lid, "I want to put in a small koi pond with a fountain"), CUSTOM)
-    assert r["status"] == "needs_info" and r["fact"] == "scope", r  # custom-only scope is never priced
+    # iteration 17: custom-only scope still gets an exact number (standard package); the custom line stays "to be priced"
+    assert r["status"] == "ok" and r["total"] > 0 and any("koi pond" in x for x in r["to_be_priced"]), r
     iid = custom_items(s, lid)[0]["item_id"]
     sms_before = _db.sms_log.count_documents({"lead_id": lid})
     out = s.post(f"{API}/itemizer/{lid}/items/{iid}/price", json={"label": "TEST_It16 Koi pond", "tiers": [4000, 6000, 9000], "match": "koi pond"})
@@ -131,9 +132,10 @@ def test_if_not_in_pdf(s, L):
     lid = lead["id"]
     vals = {"wall_replacement": "fully open", "wall_length": "12", "wall_floor_finish": "patch", "finish_level": "standard",
             "floor_above": "yes", "wall_central": "yes"}
-    r = drive(s, lid, turn(s, lid, "I want to knock down this wall"), vals)
+    turn(s, lid, "I want to knock down this wall")
+    r = drive(s, lid, turn(s, lid, "", vals), vals)  # iteration 17: facts volunteered at once (5-question budget)
     assert r["status"] == "ok" and r["if_not"] and r["if_not"]["diff"] == -6800, r
-    assert r["if_not"]["say"] == "If it isn't load-bearing, the price drops by about $6,800."
+    assert r["if_not"]["say"] == "If it isn't load-bearing, the price drops by $6,800.", r["if_not"]  # exact diff, no "about"
     assert requests.post(f"{API}/portal/{lead['portal_token']}/call/start").status_code == 200
     body = {"message": {"toolCallList": [{"id": "t1", "function": {"name": "update_scope", "arguments": {"wants_price": True}}}]}}
     assert requests.post(f"{API}/portal/{lead['portal_token']}/agent/tools", json=body).status_code == 200
@@ -142,4 +144,4 @@ def test_if_not_in_pdf(s, L):
     pdf = s.get(f"{API}/quotes/{q['id']}/pdf")
     assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
     text = "".join(p.get_text() for p in fitz.open(stream=pdf.content, filetype="pdf")).replace("\n", " ")
-    assert "If it isn't load-bearing, the price drops by about $6,800." in text, text
+    assert "If it isn't load-bearing, the price drops by $6,800." in text, text

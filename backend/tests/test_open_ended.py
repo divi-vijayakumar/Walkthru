@@ -37,7 +37,7 @@ def made():
     yield leads, tasks
     for lid in leads:
         _db.leads.delete_one({"id": lid})
-        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups", "frames"):
+        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "itemizer_tips", "quotes", "sms_log", "call_sessions", "followups", "frames"):
             _db[c].delete_many({"lead_id": lid})
     _db.kb_tasks.delete_many({"task_id": {"$in": tasks}})
 
@@ -67,16 +67,19 @@ def answer_until_priced(s, lead, out, extra=None):
 
 def test_partition_living_room_floor_above(s, made):
     lead = new_lead(s, made, "Living room remodel")
-    out = turn(s, lead, "I want to remove this partition", {"wall_outlets": "yes"})
+    # iteration 17: the work is said first (a turn with answers creates no items); the structural facts are volunteered
+    # up front so the 5-question budget still reaches the load-bearing case
+    out = turn(s, lead, "I want to remove this partition")
     assert out["status"] == "needs_info" and out["fact"] == "wall_replacement"
     assert "in its place" in out["next_text"]
-    out, asked = answer_until_priced(s, lead, out)
-    assert out["status"] == "ok" and asked.index("wall_length") < asked.index("finish_level")
+    out, asked = answer_until_priced(s, lead, out, {"wall_outlets": "yes", "floor_above": "yes", "wall_central": "yes"})
+    assert out["status"] == "ok" and len([a for a in asked if a]) <= 5, asked
+    assert "finish_level" not in asked or asked.index("wall_length") < asked.index("finish_level")
     labels = {i["label"]: i["amount"] for i in turn(s, lead, "", {}, True)["lines"]}
     for want in ("Engineer and beam allowance", "Relocate outlets", "Patch floor where the wall stood", "Patch and paint ceiling", "Demolition and haul-away"):
         assert want in labels, labels
     assert labels["Patch floor where the wall stood"] == 540 and any(k.startswith("Permit") and "structural" in k for k in labels)
-    assert out["if_not"]["total"] == out["total"] - 6800 and "drops by about $6,800" in out["if_not"]["say"]
+    assert out["if_not"]["total"] == out["total"] - 6800 and "drops by $6,800" in out["if_not"]["say"], out["if_not"]  # exact diff
     assert requests.post(f"{API}/portal/{lead['portal_token']}/call/start").status_code == 200
     body = {"message": {"toolCallList": [{"id": "t1", "function": {"name": "update_scope", "arguments": {"wants_price": True}}}]}}
     res = requests.post(f"{API}/portal/{lead['portal_token']}/agent/tools", json=body).json()["results"][0]
@@ -96,17 +99,23 @@ def test_bathroom_partition_asks_which_kind(s, made):
 
 
 def test_empty_scope_never_priced(s, made):
+    """iteration 17: empty scope + price needed -> standard package (never $0); no price request -> ask what work."""
     lead = new_lead(s, made, "Bathroom refresh")
     out = turn(s, lead, "", {}, True)
-    assert out["status"] == "needs_info" and out["next_action"] == "ask" and "total" not in out
-    assert _db.quotes.count_documents({"lead_id": lead["id"]}) == 0
+    assert out["status"] == "ok" and out["total"] > 0
+    assert "Bathroom remodel, standard finish, medium size (assumed)" in [i["label"] for i in out["lines"]]
+    lead2 = new_lead(s, made, "Bathroom refresh")
+    out = turn(s, lead2, "hi, can you hear me?")
+    assert out["status"] == "needs_info" and "total" not in out, out  # nothing asked for a price yet
 
 
 def test_wants_price_with_p0_open_explains(s, made):
     lead = new_lead(s, made, "Bathroom refresh")
     out = turn(s, lead, "Remove the floor tile. How much?")
-    assert out["status"] == "needs_info"
-    assert out["next_text"].startswith("Just so the number means something: what would you like instead")
+    # iteration 17: a price request prices now; the open must-ask takes its default and is listed
+    assert out["status"] == "ok" and out["total"] > 0, out
+    assert not out["next_text"].startswith("Just so the number means something")
+    assert any("(assumed, to confirm at the site visit)" in a for a in out["assumptions"]), out["assumptions"]
 
 
 def test_half_bath_opening(s, made):
@@ -116,7 +125,8 @@ def test_half_bath_opening(s, made):
     assert {"Tile work (floor or wall, to confirm)", "Remove vanity", "New vanity", "Replace mirror or medicine cabinet"} <= set(out["new_items"])
     assert out["fact"] == "tile_replacement"
     out, asked = answer_until_priced(s, lead, out)
-    assert {"tile_where", "vanity_plan", "floor_area", "finish_level"} <= set(asked)
+    # iteration 17: one 5-question budget per call, then price
+    assert {"tile_where", "vanity_plan"} <= set(asked) and len([a for a in asked if a]) <= 5, asked
     assert out["status"] == "ok" and out["total"] > 0
     lines = turn(s, lead, "", {}, True)["lines"]
     assert lines and all(isinstance(i["amount"], int) for i in lines), lines
@@ -135,8 +145,8 @@ def test_custom_work_then_priced_from_dashboard(s, made):
     assert out["status"] == "needs_info" and out["fact"] in ("custom_out", "custom_in", "custom_size", "finish_level")
     out, _ = answer_until_priced(s, lead, out)
     out = turn(s, lead, "", {}, True)
-    assert out["status"] == "needs_info" and "total" not in out
-    assert _db.quotes.count_documents({"lead_id": lead["id"]}) == 0
+    # iteration 17: custom-only scope still gets an exact number (standard package), the custom line stays "to be priced"
+    assert out["status"] == "ok" and out["total"] > 0 and out["to_be_priced"], out
     items = s.get(f"{API}/itemizer/{lead['id']}/custom").json()["items"]
     assert items and items[0]["in"] == "a wooden pergola" and items[0]["size"]
     r = s.post(f"{API}/itemizer/{lead['id']}/items/{items[0]['item_id']}/price",
@@ -144,6 +154,10 @@ def test_custom_work_then_priced_from_dashboard(s, made):
     assert r.status_code == 200, r.text
     made[1].append(r.json()["task_id"])
     assert r.json()["total"] > 4500
+    q = _db.quotes.find_one({"lead_id": lead["id"]}, sort=[("version", -1)])
+    labels = [i["label"] for i in q["line_items"]]
+    # once real work is priced the assumed placeholder package must not stay in the quote
+    assert "TEST_Sauna" in labels and not any("(assumed)" in lb and "standard finish" in lb for lb in labels), labels
     assert not any(m.get("kind") == "quote_ready" for m in _db.sms_log.find({"lead_id": lead["id"]}))
     lead2 = new_lead(s, made, "Living room remodel")
     out2 = turn(s, lead2, "Could you put in a sauna?")
@@ -151,14 +165,19 @@ def test_custom_work_then_priced_from_dashboard(s, made):
 
 
 def test_end_call_without_priced_quote_is_pending(s, made):
+    """iteration 17 backstop: portal call end with no quote > $0 saved -> finalize with defaults, save one, WhatsApp it once."""
     lead = new_lead(s, made, "Bathroom refresh")
     tok = lead["portal_token"]
     assert requests.post(f"{API}/portal/{tok}/call/start").status_code == 200
-    turn(s, lead, "", {}, True)
+    turn(s, lead, "I want a new vanity")
+    assert _db.quotes.count_documents({"lead_id": lead["id"]}) == 0
     assert requests.post(f"{API}/portal/{tok}/call/end", json={}).status_code == 200
     after = _db.leads.find_one({"id": lead["id"]})
-    assert after["quote_pending"] is True and after.get("quote_pending_due_at")
-    assert not any(m.get("kind") == "quote_ready" for m in _db.sms_log.find({"lead_id": lead["id"]}))
+    q = _db.quotes.find_one({"lead_id": lead["id"]}, sort=[("version", -1)])
+    assert q and q["total"] > 0 and not after.get("quote_pending"), (q, after.get("quote_pending"))
+    assert q.get("low") == q.get("high") == q["total"] and q.get("range_pct") == 0
+    sent = [m for m in _db.sms_log.find({"lead_id": lead["id"]}) if m.get("kind") == "quote_ready"]
+    assert len(sent) == 1 and f"${q['total']:,}" in sent[0]["body"] and "Here's your quote from today's call with" in sent[0]["body"], sent
 
 
 def test_camera_survey_fills_facts_and_suggests(s, made):
@@ -190,8 +209,10 @@ def test_replay_1534_call_reaches_a_price(s, made):
                   "I'm probably thinking about wallpapering this whole wall.")
     turn(s, lead, "And removing the mirrors and replacing it with something that has LED lights in the mirror.")
     labels = [i["label"] for i in s.get(f"{API}/itemizer/{lead['id']}").json()["items"] if i["status"] != "removed"]
-    assert "Accent wallpaper" in labels and "Replace mirror or medicine cabinet" in labels
-    assert "Tile work (floor or wall, to confirm)" not in labels
+    # iteration 17 KB 5: LED mirror is its own job (+ hardwired line); "LED lights in the mirror" is not an exhaust fan/lights job
+    assert {"Shower wall retile", "Shower niche", "Accent wallpaper", "Lighted (LED) mirror", "Hardwired electrical line for the mirror"} <= set(labels), labels
+    assert "Tile work (floor or wall, to confirm)" not in labels and "Walk-in shower" not in labels
+    assert "Exhaust fan and lights" not in labels, labels
     out = turn(s, lead, "No size change.", {"shower_size": "same"})
     assert not any(lb.startswith("To be priced by Apex") for lb in out["new_items"])
     asked = []
@@ -201,4 +222,4 @@ def test_replay_1534_call_reaches_a_price(s, made):
         asked.append(out["fact"])
         out = turn(s, lead, "give me the quote", {out["fact"]: {"finish_level": "standard", "wallpaper_area": "10 feet"}.get(out["fact"], "premium dial")}, True)
     assert out["status"] == "ok" and out["total"] > 0, (asked, out)
-    assert max(asked.count(f) for f in set(asked)) <= 3, asked
+    assert max(asked.count(f) for f in set(asked)) <= 1 and len(asked) <= 5, asked  # each fact asked at most once

@@ -41,7 +41,7 @@ def leads(s):
     yield make
     s.post(f"{API}/kb/reset")
     for lead in made.values():
-        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
+        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "itemizer_tips", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
             _db[c].delete_many({"lead_id": lead["id"]})
         _db.leads.delete_one({"id": lead["id"]})
 
@@ -62,10 +62,16 @@ def reset(s, lid):
     assert s.post(f"{API}/itemizer/{lid}/reset").json() == {"reset": True}
 
 
+def opening(s, lid, said, answers, camera_on=False):
+    """iteration 17 rule 3: a turn with answers creates no items from said -> say the work first, then answer."""
+    turn(s, lid, said, {}, camera_on)
+    return turn(s, lid, "", answers, camera_on)
+
+
 def gate3_neither(s, lid):
     reset(s, lid)
     # iteration 16: Remove vanity carries the camera-only sink_type fact; answer it so only vanity_mount is assumed
-    r1 = turn(s, lid, "I want this sink gone", dict(G3_ANS, sink_type="vanity cabinet"), False)
+    r1 = opening(s, lid, "I want this sink gone", dict(G3_ANS, sink_type="vanity cabinet"), False)
     goal(s, lid, "vanity_mount@it1", "not_found")
     return r1, turn(s, lid, "", {"vanity_mount": "not sure"}, False)
 
@@ -163,11 +169,11 @@ def test_steps_answer_converted(s, leads):
 def test_gate3_ask_when_camera_off(s, leads):
     lid = _db.leads.find_one({"name": "TEST_Itemizer bath"})["id"]
     reset(s, lid)
-    r = turn(s, lid, "I want this sink gone", G3_ANS, False)
+    r = opening(s, lid, "I want this sink gone", G3_ANS, False)
     print(r)
     # iteration 11 rule: vanity mount moves the price < $1,000 -> never asked; camera off -> default + assumption
     assert r["next_action"] == "price" and r["status"] == "ok" and ASK_Q not in r["next_text"]
-    assert "Assumed vanity mount: floor" in r["assumptions"]
+    assert "Assumed vanity mount: floor (assumed, to confirm at the site visit)" in r["assumptions"]
 
 
 def test_gate3_neither_assume(s, leads):
@@ -175,26 +181,24 @@ def test_gate3_neither_assume(s, leads):
     r1, r = gate3_neither(s, lid)
     print(r1, r)
     assert r["status"] == "ok"
-    assert r["assumptions"] == ["Assumed vanity mount: floor"]
+    assert r["assumptions"] == ["Assumed vanity mount: floor (assumed, to confirm at the site visit)"]
     sess = _db.itemizer_sessions.find_one({"lead_id": lid})
     assert sum(1 for f in sess["facts"] if f["state"] == "assumed") == 1
-    low, high, total = r["low"], r["high"], r["total"]
-    assert low < total < high
-    # range_pct 15: compare against r500 math
-    assert abs(high - total * 1.15) <= 250 and abs(total * 0.85 - low) <= 250
+    # iteration 17: one exact number, no range
+    assert "low" not in r and "high" not in r and r["total"] > 0
     assert any(ln["label"] == "Retile under old vanity" for ln in r["lines"])
 
 
 def test_gate3_camera_answers_no_assumption_range10(s, leads):
     lid = _db.leads.find_one({"name": "TEST_Itemizer bath"})["id"]
     reset(s, lid)
-    turn(s, lid, "I want this sink gone", G3_ANS, True)
+    opening(s, lid, "I want this sink gone", G3_ANS, True)
     goal(s, lid, "vanity_mount@it1", "met", 0.9, "floor")
     goal(s, lid, "sink_type@bathroom", "met", 0.9, "vanity cabinet")  # iteration 16: new camera-only sink_type fact
     r = turn(s, lid, "", {}, True)
     print(r)
     assert r["status"] == "ok" and r["assumptions"] == []
-    assert abs(r["high"] - r["total"] * 1.10) <= 250
+    assert "low" not in r and "high" not in r  # iteration 17: exact total, no range
 
 
 # --- Gate 4
@@ -239,7 +243,7 @@ def test_gate6_deterministic(s, leads):
     outs = []
     for _ in range(3):
         _, r = gate3_neither(s, lid)
-        outs.append(json.dumps({k: r[k] for k in ("total", "low", "high", "assumptions", "lines", "status")}, sort_keys=True))
+        outs.append(json.dumps({k: r.get(k) for k in ("total", "assumptions", "lines", "status")}, sort_keys=True))
     assert outs[0] == outs[1] == outs[2]
 
 
@@ -290,14 +294,14 @@ def test_tool_gating_and_unknown(leads):
 def test_update_scope_versions_adjust_followup(leads):
     lead = _db.leads.find_one({"name": "TEST_Itemizer vapi"}, {"_id": 0})
     assert requests.post(f"{API}/portal/{lead['portal_token']}/call/start").status_code == 200
-    a = portal_tool(lead, "update_scope", {"said": "I want this sink gone", "answers": G3_ANS, "camera_on": False})
+    a = portal_tool(lead, "update_scope", {"said": "I want this sink gone", "answers": G3_ANS, "camera_on": False, "wants_price": True})
     print(a)
-    # iteration 11 rule: vanity mount is not priority-1 -> priced right away
+    # 15:34 rule: wants_price prices now (open facts take defaults)
     assert a["status"] == "ok" and isinstance(a["version"], int) and ASK_Q not in a["next_text"]
-    b = portal_tool(lead, "update_scope", {"said": "", "answers": {"vanity_mount": "floor"}, "camera_on": False})
+    b = portal_tool(lead, "update_scope", {"said": "", "answers": {"vanity_mount": "floor"}, "camera_on": False, "wants_price": True})
     print(b)
     assert b["status"] == "ok" and isinstance(b["version"], int)
-    c = portal_tool(lead, "update_scope", {"said": "", "answers": {"vanity_mount": "floor"}, "camera_on": False})
+    c = portal_tool(lead, "update_scope", {"said": "", "answers": {"vanity_mount": "floor"}, "camera_on": False, "wants_price": True})
     assert c["version"] == b["version"] and c["total"] == b["total"]
     d = portal_tool(lead, "request_adjustment", {"change_type": "discount_request", "flexible_timeline_weeks": 4, "can_sign_within_7_days": True})
     print(d)
@@ -310,7 +314,7 @@ def test_update_scope_versions_adjust_followup(leads):
 
 def test_vapi_tools_secret(leads):
     lead = _db.leads.find_one({"name": "TEST_Itemizer vapi"}, {"_id": 0})
-    body = tc("update_scope", {"said": "", "answers": {"vanity_mount": "floor"}})
+    body = tc("update_scope", {"said": "", "answers": {"vanity_mount": "floor"}, "wants_price": True})
     body["message"]["call"] = {"assistantOverrides": {"variableValues": {"lead_token": lead["portal_token"]}}}
     r = requests.post(f"{API}/vapi/tools", json=body)
     assert r.json()["results"][0]["error"] == "Unauthorized"

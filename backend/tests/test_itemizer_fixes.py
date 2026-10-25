@@ -42,7 +42,7 @@ def L(s):
     yield make
     s.post(f"{API}/kb/reset")
     for lead in made.values():
-        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
+        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "itemizer_tips", "quotes", "sms_log", "call_sessions", "followups", "pricing_states", "contracts", "payments", "frames"):
             _db[c].delete_many({"lead_id": lead["id"]})
         _db.leads.delete_one({"id": lead["id"]})
 
@@ -51,6 +51,12 @@ def turn(s, lid, said="", answers=None, camera_on=False):
     r = s.post(f"{API}/itemizer/{lid}/turn", json={"said": said, "answers": answers or {}, "camera_on": camera_on})
     assert r.status_code == 200, r.text
     return r.json()
+
+
+def opening(s, lid, said, answers, camera_on=False):
+    """iteration 17 rule 3: a turn with answers creates no items from said -> say the work first, then answer."""
+    turn(s, lid, said, {}, camera_on)
+    return turn(s, lid, "", answers, camera_on)
 
 
 def goal(s, lid, fact_id, status, conf=0.0, value=None, code=200):
@@ -148,8 +154,8 @@ def test_counter_area_steps_sane(s, L):
 def test_rule_ids_unique(s, L):
     rules = s.get(f"{API}/kb").json()["rules"]
     ids = [r["rule_id"] for r in rules]
-    # iteration 16: KB_VERSION 3 adds the wall-removal / open-ended rules (41 -> 50)
-    assert len(ids) == 50 and len(set(ids)) == 50
+    # iteration 16: KB_VERSION 3 adds the wall-removal / open-ended rules (41 -> 50); KB 5 adds the LED-mirror hardwire rule (51)
+    assert len(ids) == 51 and len(set(ids)) == 51
     assert all(r["rule_id"].startswith("driver_") for r in rules if r["kind"] == "driver")
     assert all(r["rule_id"].startswith("measure_") for r in rules if r["kind"] == "measure_method")
 
@@ -214,7 +220,7 @@ def test_goal_after_price_new_version(s, L):
     lid = lead["id"]
     reset(s, lid)
     _db.quotes.delete_many({"lead_id": lid})
-    turn(s, lid, "I want this sink gone", dict(G3_ANS, sink_type="vanity cabinet"), False)  # iteration 16: new sink_type fact
+    opening(s, lid, "I want this sink gone", dict(G3_ANS, sink_type="vanity cabinet"), False)  # iteration 16: new sink_type fact
     goal(s, lid, "vanity_mount@it1", "not_found")
     r = turn(s, lid, "", {"vanity_mount": "not sure"}, False)
     assert r["status"] == "ok"
@@ -244,13 +250,14 @@ def test_dedupe_assumption_change_new_version(L):
     lead = L("vapi", "Bathroom remodel")
     assert requests.post(f"{API}/portal/{lead['portal_token']}/call/start").status_code == 200
     ans = dict(G3_ANS, water_damage="not sure", vanity_mount="floor", sink_type="vanity cabinet")  # iteration 16: new sink_type fact
-    a = tool(lead, "update_scope", {"said": "I want this sink gone", "answers": ans})
+    tool(lead, "update_scope", {"said": "I want this sink gone"})
+    a = tool(lead, "update_scope", {"said": "", "answers": ans})
     for _ in range(5):
         if a["status"] == "ok":
             break
         a = tool(lead, "update_scope", {"said": "", "answers": {a["fact"]: ans.get(a["fact"], "not sure")}})
     print(a)
-    assert a["status"] == "ok" and "Assumed water damage: no" in a["assumptions"]
+    assert a["status"] == "ok" and "Assumed water damage: no (assumed, to confirm at the site visit)" in a["assumptions"], a
     b = tool(lead, "update_scope", {"said": "", "answers": {"water_damage": "no"}})
     print(b)
     assert b["total"] == a["total"] and b["assumptions"] == [] and b["version"] == a["version"] + 1
@@ -270,40 +277,35 @@ def test_vapi_goal_then_update_scope_same_version(s, L):
 
 # FIX 7 skips
 def test_unanswered_reasked_once_then_advances(s, L):
+    """iteration 17: each fact is asked at most once; asked and the next turn doesn't answer it -> assumed (listed), never re-asked."""
     lid = L("bath", "Bathroom remodel")["id"]
     reset(s, lid)
     r = turn(s, lid, "I want this sink gone", {}, False)
     assert r["fact"] == "replacing_vanity" and r["next_text"] == VANITY_Q
     r = turn(s, lid, "", {"sinks": "1"}, False)
     print(r)
-    assert r["fact"] == "replacing_vanity" and r["next_text"] == VANITY_Q, r
     f = fact(s, lid, "replacing_vanity")
-    assert f["state"] == "asked"
-    r = turn(s, lid, "", {"sinks": "1"}, False)
-    f = fact(s, lid, "replacing_vanity")
-    # must-ask (P0): never defaulted silently; after 3 unanswered asks the loop guard takes the usual answer, marked 'unsure'
-    assert f.get("p0") and f["state"] == "resolved" and f["basis"] == "unsure", f
+    assert f.get("p0") and f["state"] == "assumed", f
+    assert r["fact"] != "replacing_vanity" and r["next_text"] != VANITY_Q, r
+    r = turn(s, lid, "", {}, False, ) if r["status"] != "ok" else r
     assert r["fact"] != "replacing_vanity", r
 
 
 def test_not_sure_advances_immediately(s, L):
-    """replacing_vanity is now must-ask (P0): one 'not sure' re-asks, the second takes the usual answer as theirs."""
+    """15:34 rule: 'not sure' takes the usual answer right away and is never asked again."""
     lid = L("bath", "Bathroom remodel")["id"]
     reset(s, lid)
     turn(s, lid, "I want this sink gone", {}, False)
-    turn(s, lid, "", {"replacing_vanity": "not sure"}, False)
+    r = turn(s, lid, "", {"replacing_vanity": "not sure"}, False)
     f = fact(s, lid, "replacing_vanity")
-    assert f["state"] in ("open", "asked") and f.get("unknowns") == 1, f
-    turn(s, lid, "", {"replacing_vanity": "not sure"}, False)
-    f = fact(s, lid, "replacing_vanity")
-    assert f["state"] == "resolved" and f["value"] == "new" and f["basis"] == "unsure", f
+    assert f["state"] == "assumed" and f["value"] == "new" and r["fact"] != "replacing_vanity", (f, r)
 
 
 # FIX 8
 def test_water_damage_assumption(s, L):
     lid = L("bath", "Bathroom remodel")["id"]
     reset(s, lid)
-    r = turn(s, lid, "I want this sink gone", dict(G3_ANS, water_damage="yes", vanity_mount="floor"), False)
+    r = opening(s, lid, "I want this sink gone", dict(G3_ANS, water_damage="yes", vanity_mount="floor"), False)
     r = drive(s, lid, r, {"vanity_mount": "floor"})
     print(r)
     assert r["status"] == "ok"

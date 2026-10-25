@@ -102,7 +102,7 @@ class TestQuotes:
         assert "Ana Pereira" in t and q["lead"]["ask"] in t
         for i in q["line_items"]:
             assert i["label"][:25] in t.replace("\n", " ")
-        assert "Estimated total" in t and "Likely range" in t
+        assert "Total" in t and "Likely range" not in t  # iteration 17: one exact total, no range
         assert f"Deposit after signing ({q['deposit_pct']}%)" in t
         assert f"${round(q['total']):,}" in t
         for a in q.get("assumptions") or []:

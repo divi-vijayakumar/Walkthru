@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/shared/api";
-import { money, range } from "@/shared/format";
+import { money } from "@/shared/format";
 import { when } from "@/dashboard/CallDetail";
 import { Chips, PageShell, SampleTag, Stat } from "@/dashboard/PageShell";
 import { QuoteDetail, QuoteStatus } from "@/dashboard/QuoteDetail";
@@ -14,7 +14,6 @@ const QuoteRow = ({ q, active, onOpen }) => (
     <td className="px-4 py-3 tabular">v{q.version}</td>
     <td className="px-4 py-3"><QuoteStatus status={q.status} /></td>
     <td className="px-4 py-3 font-bold tabular">{money(q.total)}</td>
-    <td className="px-4 py-3 text-wt-muted tabular">{range(q)}</td>
     <td className="px-4 py-3">{when(q.created_at)}</td>
   </tr>
 );
@@ -52,10 +51,10 @@ export default function QuotesPage() {
       <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_420px]">
         <div className="overflow-x-auto rounded-2xl border border-wt-line bg-white">
           <table className="w-full min-w-[640px] text-left text-[14px]">
-            <thead className="text-[13px] text-wt-muted"><tr>{["Lead", "Version", "Status", "Total", "Range", "Date"].map((h) => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead>
+            <thead className="text-[13px] text-wt-muted"><tr>{["Lead", "Version", "Status", "Total", "Date"].map((h) => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead>
             <tbody>
               {rows.map((q) => <QuoteRow key={q.id} q={q} active={open === q.id} onOpen={pick} />)}
-              {data && rows.length === 0 && <tr><td colSpan={6} data-testid="quotes-empty" className="px-4 py-6 text-wt-muted">No quotes here yet.</td></tr>}
+              {data && rows.length === 0 && <tr><td colSpan={5} data-testid="quotes-empty" className="px-4 py-6 text-wt-muted">No quotes here yet.</td></tr>}
             </tbody>
           </table>
         </div>

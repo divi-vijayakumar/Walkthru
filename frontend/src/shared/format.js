@@ -1,6 +1,6 @@
 export const money = (n) => (n == null ? "" : `$${Math.round(n).toLocaleString("en-US")}`);
 
-export const range = (q) => (q ? `${money(q.low)} to ${money(q.high)}` : "");
+export const range = (q) => (q ? money(q.total) : "");
 
 export const clock = (secs) => {
   const s = Math.max(0, Math.floor(secs));

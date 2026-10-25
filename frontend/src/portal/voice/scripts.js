@@ -1,6 +1,6 @@
 const pick = (text, options, fallback) => options.find((o) => (text || "").toLowerCase().includes(o)) || fallback;
 const fmt = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
-export const rangeOf = (r) => `${fmt(r.low)} to ${fmt(r.high)}`;
+export const rangeOf = (r) => fmt(r.total);
 const slug = (s) => s.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
 
 const bathArgs = (ctx, changes = []) => ({

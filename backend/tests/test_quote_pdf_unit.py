@@ -15,5 +15,6 @@ def test_pdf_builder_edge_cases():
     with fitz.open(stream=body, filetype="pdf") as d:
         t = "\n".join(p.get_text() for p in d)
     for s in ("To be priced", "-$500", "$9,000", "Quote, version 3", "January 5, 2026", "TEST_ Jo & Co", "recalled",
-              "Walls are sound & dry <ok>", "a@b.c", "1 Main", "$11,000 to $14,000", "Deposit after signing (5%)", "$600"):
+              "Walls are sound & dry <ok>", "a@b.c", "1 Main", "$12,000", "Deposit after signing (5%)", "$600"):
         assert s in t, s
+    assert "$11,000 to $14,000" not in t and "$14,000" not in t  # iteration 17: one exact number, never a range

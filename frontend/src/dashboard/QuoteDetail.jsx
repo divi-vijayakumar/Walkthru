@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/shared/api";
-import { money, range } from "@/shared/format";
+import { money } from "@/shared/format";
 import { when } from "@/dashboard/CallDetail";
 import { Badge } from "@/dashboard/PageShell";
 import { CustomLine } from "@/dashboard/CustomLine";
@@ -62,7 +62,7 @@ export const QuoteDetail = ({ quoteId, onPick, onChanged }) => {
         <QuoteStatus status={q.status} testId="quote-detail-status" />
       </div>
       <p data-testid="quote-detail-total" className="mt-3 font-display text-[34px] font-bold leading-tight tabular">{money(q.total)}</p>
-      <p className="text-[13px] text-wt-muted tabular">{range(q)} · deposit {q.deposit_pct}%, {money(q.deposit_amount)}{q.margin_pct != null ? ` · margin ${q.margin_pct}%` : ""}</p>
+      <p className="text-[13px] text-wt-muted tabular">Deposit {q.deposit_pct}%, {money(q.deposit_amount)}{q.margin_pct != null ? ` · margin ${q.margin_pct}%` : ""}</p>
       <ul className="mt-3">
         {q.line_items.map((i) => (i.custom ? (
           <CustomLine key={i.key} leadId={q.lead_id} line={i} onPriced={(r) => { onChanged?.(); if (r.quote_id) onPick(r.quote_id); }} />

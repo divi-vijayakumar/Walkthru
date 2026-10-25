@@ -59,7 +59,7 @@ def L(s):
         _db.percia_goals.delete_many({"$or": [{"session_id": {"$in": sids}}, {"goal_id": {"$in": gids}}]})
         _db.percia_frames.delete_many({"goal_id": {"$in": gids}})
         _db.media.delete_many({"session_id": {"$in": sids}})
-        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "quotes", "sms_log", "call_sessions", "followups",
+        for c in ("itemizer_sessions", "itemizer_insights", "itemizer_goals", "itemizer_tips", "quotes", "sms_log", "call_sessions", "followups",
                   "pricing_states", "contracts", "payments", "frames"):
             _db[c].delete_many({"lead_id": lead["id"]})
         _db.leads.delete_one({"id": lead["id"]})
@@ -69,6 +69,12 @@ def turn(s, lid, said="", answers=None, camera_on=False, wants_price=False):
     r = s.post(f"{API}/itemizer/{lid}/turn", json={"said": said, "answers": answers or {}, "camera_on": camera_on, "wants_price": wants_price})
     assert r.status_code == 200, r.text
     return r.json()
+
+
+def opening(s, lid, said, answers, camera_on=False):
+    """iteration 17 rule 3: a turn with answers creates no items from said -> say the work first, then answer."""
+    turn(s, lid, said, {}, camera_on)
+    return turn(s, lid, "", answers, camera_on)
 
 
 def goal(s, lid, fact_id, status, conf=0.0, value=None):
@@ -115,19 +121,17 @@ def test_fix1_question_budget(s, L):
     r = turn(s, lid, REAL)
     r, log = drive(s, lid, r, P0_VALS)
     print(log, r)
-    # iteration 16 spec: must-ask (P0) facts are always asked; the 5-question budget only covers the other facts
-    p0 = {f["name"] for f in sess(s, lid)["facts"] if f.get("p0")}
-    asked = [x for x in log if x[1] in ("ask", "measure", "confirm") and x[0] not in p0]
-    assert r["status"] == "ok"
+    # iteration 17: ONE budget of 5 questions per call incl. must-asks and camera confirmations, then price
+    asked = [x for x in log if x[1] in ("ask", "measure", "confirm")]
+    assert r["status"] == "ok" and r["total"] > 0
     assert sess(s, lid)["asked"] <= 5 and len(asked) <= 5, log
     assert "sinks" not in [f for f, _, _ in log]
-    n_assumed = sum(1 for f in sess(s, lid)["facts"] if f["state"] == "assumed")
-    pct = min(25, 10 + 5 * n_assumed) / 100
-    assert len(r["assumptions"]) >= 3
-    assert r["high"] >= r["total"] * (1 + pct) - 500 and r["high"] > r["total"]
+    assert len(r["assumptions"]) >= 3 and all("(assumed, to confirm at the site visit)" in a or "not in this total" in a
+                                               or "until the site visit" in a for a in r["assumptions"]), r["assumptions"]
+    assert "low" not in r and "high" not in r  # one exact number
     # sinks on Remove vanity ($350 vs $550) is below $300 impact -> never asked
     reset(s, lid)
-    r = turn(s, lid, "I want this sink gone", {k: v for k, v in G3.items() if k != "sinks"})
+    r = opening(s, lid, "I want this sink gone", {k: v for k, v in G3.items() if k != "sinks"})
     r, log = drive(s, lid, r)
     assert "sinks" not in [f for f, _, _ in log], log
 
@@ -156,7 +160,9 @@ def test_p0_single_not_sure_reasks(s, L):
     turn(s, lid, "", {first: "not sure"})
     f = facts(s, lid, first)[0]
     print(f)
-    assert f["state"] != "resolved" and f.get("unknowns") == 1, f
+    assert f["state"] == "assumed", f  # 15:34 rule: 'not sure' -> assumed now, never asked again
+    r = turn(s, lid, "")
+    assert r["fact"] != first, r
 
 
 # FIX 2 price on request
@@ -168,15 +174,10 @@ def test_fix2_wants_price(s, L, said, flag):
     assert r["status"] == "needs_info"
     r = turn(s, lid, said, {}, False, flag)
     print(r)
-    # iteration 16 spec: with must-ask facts open, a price request asks the most important one first (prefixed)
-    assert r["status"] == "needs_info" and r["next_action"] in ("ask", "measure"), r
-    assert r["next_text"].startswith("Just so the number means something: "), r
-    for _ in range(10):  # answer only the must-ask facts, then ask for the price again
-        if r["status"] == "ok":
-            break
-        r = turn(s, lid, said, {r["fact"]: P0_VALS.get(r["fact"], "not sure")}, False, flag)
-    print(r)
-    assert r["next_action"] == "price" and r["status"] == "ok" and r["assumptions"] and r["total"] > 0
+    # iteration 17: a price request prices now; open must-asks take their defaults as listed assumptions
+    assert r["next_action"] == "price" and r["status"] == "ok" and r["total"] > 0, r
+    assert not r["next_text"].startswith("Just so the number means something"), r
+    assert any("(assumed, to confirm at the site visit)" in a for a in r["assumptions"]), r["assumptions"]
 
 
 # FIX 3 room-aware facts
@@ -312,13 +313,13 @@ def test_fix9_confirm_numeric(s, L, answer, expect):
 def test_fix9_confirm_categorical(s, L):
     lid = L("conf2")["id"]
     reset(s, lid)
-    turn(s, lid, "I want this sink gone", G3, True)
+    opening(s, lid, "I want this sink gone", G3, True)
     goal(s, lid, "vanity_mount@it1", "met", 0.6, "floor")
     r = turn(s, lid, "", {}, True)
     print(r)
     assert r["next_action"] == "confirm" and r["fact"] == "vanity_mount"
     reset(s, lid)
-    turn(s, lid, "I want this sink gone", G3, True)
+    opening(s, lid, "I want this sink gone", G3, True)
     goal(s, lid, "vanity_mount@it1", "met", 0.9, "floor")
     f = facts(s, lid, "vanity_mount")[0]
     ins = sess(s, lid)["insights"]
@@ -332,13 +333,13 @@ def test_fix9_confirm_categorical(s, L):
 def test_fix10_cant_answer(s, L):
     lid = L("cant")["id"]
     reset(s, lid)
-    r = turn(s, lid, "new exhaust fan", {"fan_exists": "yes"}, False)
+    r = opening(s, lid, "new exhaust fan", {"fan_exists": "yes"}, False)
     r, log = drive(s, lid, r)
     print(log, r["assumptions"])
     assert "fan_vents_outside" not in [f for f, _, _ in log]
-    assert any("fan vents outside" in a and "(confirmed at the site visit)" in a for a in r["assumptions"])
+    assert any("fan vents outside" in a and "(assumed, to confirm at the site visit)" in a for a in r["assumptions"]), r["assumptions"]
     reset(s, lid)
-    r = turn(s, lid, "new exhaust fan", {"fan_exists": "yes"}, True)
+    r = opening(s, lid, "new exhaust fan", {"fan_exists": "yes"}, True)
     r, log = drive(s, lid, r, camera_on=True)
     print(log)
     shows = [t for f, a, t in log if f == "fan_vents_outside"]
@@ -380,16 +381,19 @@ def test_fix12_insights_once(s, L):
     lid, tok = lead["id"], lead["portal_token"]
     reset(s, lid)
     assert requests.post(f"{API}/portal/{tok}/call/start").status_code == 200
-    tool(lead, {"said": "I want this sink gone", "answers": G3, "camera_on": True})
+    tool(lead, {"said": "I want this sink gone", "camera_on": True})
+    tool(lead, {"said": "", "answers": G3, "camera_on": True})
     goal(s, lid, "vanity_mount@it1", "met", 0.9, "floor")
     assert requests.get(f"{API}/portal/{tok}").json()["insights"] == []
     assert _db.itemizer_insights.count_documents({"lead_id": lid, "delivered": False}) == 1
+    # iteration 17 (VOICE_MODE=vapi): the portal poll never claims insights; update_scope returns them once, prepended to next_text
     a = requests.get(f"{API}/portal/{tok}?live=1").json()["insights"]
-    b = requests.get(f"{API}/portal/{tok}?live=1").json()["insights"]
-    print(a, b)
-    assert len(a) == 1 and b == []
+    assert a == [] and _db.itemizer_insights.count_documents({"lead_id": lid, "delivered": False}) == 1
     t = tool(lead, {"said": "", "answers": {}})
-    assert t["insights"] == []
+    print(t)
+    assert len(t["insights"]) == 1 and t["next_text"].startswith(t["insights"][0].rstrip(".")), t
+    t = tool(lead, {"said": "", "answers": {}})
+    assert t["insights"] == [] and requests.get(f"{API}/portal/{tok}?live=1").json()["insights"] == []
     # undelivered insight comes back in update_scope, then never in the poll
     goal(s, lid, "water_damage@job", "met", 0.9, "yes") if facts(s, lid, "water_damage")[0]["state"] != "resolved" else None
     _db.itemizer_insights.insert_one({"id": "TEST_ins", "lead_id": lid, "key": "x", "text": "TEST insight", "delivered": False, "at": "2099"})
@@ -404,8 +408,7 @@ def test_fix12_insights_once(s, L):
 def test_fix13_plain_insight(s, L):
     lid = L("plain")["id"]
     reset(s, lid)
-    r = turn(s, lid, "I want this sink gone", {k: v for k, v in G3.items() if k != "replacing_vanity"}, True)
-    assert r["status"] == "needs_info", r  # before pricing, retile not yet added
+    r = opening(s, lid, "I want this sink gone", G3, True)  # iteration 17: work first, then the answers
     out = goal(s, lid, "vanity_mount@it1", "met", 0.9, "floor")
     ins = [i["text"] for i in sess(s, lid)["insights"]]
     print(out, ins)
@@ -417,6 +420,8 @@ def test_fix13_plain_insight(s, L):
 def test_fix1_camera_off_priority1_floor_area_measured(s, L):
     lid = L("camoff")["id"]
     reset(s, lid)
-    r = turn(s, lid, "I want a new tile floor", {"finish_level": "standard", "water_damage": "no", "timeline": "in two months"}, False)
-    print(r)
-    assert r["status"] == "needs_info" and r["fact"] == "floor_area" and r["next_action"] in ("measure", "ask"), r
+    r = turn(s, lid, "I want a new tile floor", {}, False)
+    r, log = drive(s, lid, r, {"finish_level": "standard", "floor_new": "tile"})
+    print(log, r)
+    # iteration 17: still asked (within the 5-question budget), never silently defaulted
+    assert "floor_area" in [f for f, a, _ in log if a in ("measure", "ask")], log
