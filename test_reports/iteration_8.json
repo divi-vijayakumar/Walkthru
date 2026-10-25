@@ -1,0 +1,48 @@
+{
+  "summary": "Tested the Itemizer, the KB, and the update_scope tool path. All backend tests ran on TEST_ leads only, created through POST /api/leads with the non-allowlisted number (408) 555-0199, so WhatsApp sends were simulated. /dev/reset was never called. Results for /app/backend/tests/test_itemizer.py: 14 of 17 pass. All 6 user acceptance gates PASS. G1: 'I want this sink gone' adds Remove vanity and asks the vanity question. G2: camera result floor 0.88, then new floating vanity, adds 'Retile under old vanity' at $650 with basis seen, rule retile_floating, and exactly one insight containing +$650. G3: camera on with a not_found result gives the show prompt; camera off gives the plain ask; with neither, the vanity mount is assumed floor, there is exactly one assumption, range_pct is 15 and Retile is added; when the camera answers instead, there are no assumptions and the range is 10%. G4: kitchen stove and hood: stove fuel is asked, the hood type question is only the plain fallback, 'downdraft' and 'chimney' never appear, and gas to induction adds the 240 V circuit. G5: '9 by 7 at 12 in' gives 63 sq ft, basis measured. G6: 3 runs give identical output. KB: GET returns tasks, facts and rules (rules include driver and measure_method kinds). PUT with a changed id returns 422 and an unknown table returns 404. Editing the retile price to 999 changed the priced line, and POST /api/kb/reset restored it to 650. All endpoints return 401 without auth. Tools: get_quote_estimate returns 'Unknown tool'. Before call/start, calls return 'No call in progress'. update_scope saves a version, and repeating the same scope keeps the same version. A discount_request creates version+1 with a Discount line. queue_quote_followup returns ok. /api/vapi/tools returns Unauthorized without the secret and works with X-Vapi-Secret plus lead_token. The 3 failing tests are real engine bugs (see issues). Frontend: tested /settings via sidebar-nav-rate (tabs, rows, edit, invalid JSON toast, 422 toast, a saved edit that persisted after reload, mobile at 390px with no overflow). The mock voice UI was not tested because VOICE_MODE=vapi; the mock tool path was tested via the backend. Cleanup is done: TEST_ leads and their records, test sessions and itemizer sessions removed, KB reset to seed. Dhivya was untouched (pending_deposit).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/itemizer/{id}/turn (confirm flow)", "issue": "After an ambiguous camera result, Alex asks 'I can see vanity mount: floor. Is that right?'. Answering {vanity_mount:'yes'} stores value 'yes' instead of the pending_confirm value 'floor'. So the retile_open_space rule never fires and the quote leaves out the $650 retile. apply_answers should map yes/correct/right to f['pending_confirm'] (and no to the next channel), then clear pending_confirm.", "priority": "HIGH"},
+      {"endpoint": "keyword_tasks (bathroom)", "issue": "'I want a new tile floor' in a bathroom adds BOTH 'Floor tile' and 'Flooring', because the room-agnostic flooring task (room None) also matches \\bfloor\\b. The floor is priced twice. Exclude 'flooring' when 'floor_tile' matched, or limit flooring to non-bathroom rooms.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "engine.measure", "issue": "Step answers are not converted. '4 steps by 3 steps' gives 4 sq ft and '20 steps' gives 20 sq ft (method 'known'), even though the measure prompt asks the homeowner to count steps. Step text should be parsed (about 2.5 ft per step) with basis measured. Also, a dict {method:'steps', a} with no b returns linear ft as sq ft."},
+      {"endpoint": "kb_rules seed", "issue": "Duplicate rule_id 'water_damage' (the rule and the driver both use it). PUT /api/kb/rules/water_damage replace_one only hits the first doc, and React warns about duplicate keys on the Rules tab. Rename the driver id (e.g. 'driver_water_damage')."},
+      {"endpoint": "PUT /api/kb/{kind}/{id}", "issue": "There is no schema validation. PUT {task_id:'toilet'} (no price, triggers or facts) returns 200, and the next turn on 'replace the toilet' returns HTTP 500 (KeyError in keyword_tasks). price:'abc' is also accepted. Validate the required keys and types with a Pydantic model per kind."},
+      {"endpoint": "on_goal_result / save_itemized", "issue": "A camera finding that arrives after pricing changes the session total (seen: 2100 -> 1450) but saves no quote version until the next update_scope. Spec rule 9 says the Itemizer makes a new version. Also, the save_itemized dedupe compares only total and labels, so a change in range or assumptions with the same total (e.g. an assumed fact later answered) keeps the stale low/high/assumptions on the quote."},
+      {"endpoint": "turn()", "issue": "Any fact that was 'asked' and not answered in the next update_scope call is immediately advanced, often to 'assume'. If the homeowner changes topic once, the fact is silently assumed and the range widens. Consider waiting at least one more turn, or only advancing when the answer is explicitly unknown."},
+      {"endpoint": "price() range", "issue": "Because of r500 rounding, small quotes give low == total (e.g. total 1450, low 1450, high 1500). This matches the spec rounding, but the range looks one-sided."},
+      {"endpoint": "rule water_damage", "issue": "The note says the water damage allowance is listed as an assumption until the site visit, but it isn't added to assumptions[]."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SettingsPage Rules tab", "issue": "React warning about duplicate key 'water_damage' (from the duplicate rule_id). Only one of the two rows is reliably editable.", "selector": "[data-testid='kb-row-water_damage']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/settings tasks", "issues": ["The price summary joins conditional prices with '+' (e.g. Remove vanity '350 + 550', Remove tub '650 + 350 + 900'). These read as additive, but they are either/or by condition. Show the 'when' conditions or use '/'.", "Error toasts stack (invalid JSON, 422, Saved all stay visible). This is cosmetic."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_itemizer.py", "/app/test_reports/pytest/pytest_itemizer.xml"],
+  "action_items": [
+    "Fix confirm answers: map yes to pending_confirm, and clear pending_confirm (test_confirm_yes_resolves_to_seen_value)",
+    "Stop Flooring from double-matching alongside Floor tile in bathrooms (test_bathroom_floor_single_task)",
+    "Parse step counts in measure() (test_steps_answer_converted)",
+    "Make the driver rule_ids unique (water_damage collision)",
+    "Validate KB PUT docs per kind so a bad edit can't 500 the Itemizer",
+    "Save a new quote version when a goal result changes the price after pricing; include low/high/assumptions in the save_itemized dedupe"
+  ],
+  "critical_code_review_comments": [
+    "vapi resolve_lead falls back to the most recent walkthru_initiated lead when lead_token is missing. With a real homeowner (Dhivya) possibly in a call, any update_scope without a lead_token would edit her itemizer session and quote. Consider refusing instead of falling back.",
+    "Itemizer.value(name, item_id) falls back to another item's fact ('or fs') when this item has none. Rules call value(name) with no item, so with two items sharing an item-scoped fact (e.g. 'moving' for toilet and kitchen_sink, or light_count) the first fact wins.",
+    "mockAdapter scopeLoop sends answers {[r.fact]: ...}. If fact is '' (the 'What work would you like done?' fallback), it sends {'': text}, which is ignored, and the loop burns its iterations.",
+    "The old suites (test_walkthru_v2_api.py, test_tool_call_gating.py, test_security_fixes.py) were updated to use update_scope, but they were NOT run because their fixtures call /api/dev/reset, which would delete the real lead. They need to be ported to TEST_ leads before running."
+  ],
+  "updated_files": ["/app/backend/tests/test_itemizer.py", "/app/backend/tests/test_walkthru_v2_api.py", "/app/backend/tests/test_tool_call_gating.py", "/app/backend/tests/test_security_fixes.py"],
+  "success_rate": {"backend": "82% (14/17; all 6 acceptance gates pass, 3 bug tests fail)", "frontend": "95% (settings page fully works; duplicate-key warning)"},
+  "seed_data_creation": "Temporary TEST_Itemizer bath/kit/vapi leads only, all deleted with their sms_log, quotes, call_sessions, followups and itemizer_sessions. The KB was reset to seed via POST /api/kb/reset.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run only: cd /app/backend && python -m pytest tests/test_itemizer.py (it is self-contained, creates and deletes TEST_ leads, never resets data). Do NOT run test_walkthru_v2_api.py, test_tool_call_gating.py, test_security_fixes.py or test_stripe_deposit.py: they call /api/dev/reset, which wipes the real lead Dhivya. VOICE_MODE=vapi, so the mock voice UI can't be exercised in the browser. Gate 3 note: when nothing else is left to ask, the engine treats the camera as unavailable in the same turn and returns the show prompt right away. A later not_found then moves to ask. Test the show prompt with the sequence turn(say), goal not_found, then turn(answer replacing_vanity)."
+}

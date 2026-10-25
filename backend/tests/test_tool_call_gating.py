@@ -27,10 +27,9 @@ def lead(s, name):
     return next(l for l in s.get(f"{API}/dashboard").json()["leads"] if l["name"] == name)
 
 
-def body(name="get_quote_estimate"):
+def body(name="update_scope"):
     return {"message": {"type": "tool-calls", "toolCallList": [{"id": "tcG", "function": {"name": name, "arguments": {
-        "project_type": "bathroom_remodel", "room_size": "medium", "finish_level": "standard",
-        "requested_changes": ["walk-in shower and double vanity"]}}}]}}
+        "said": "I want a walk-in shower and a double vanity", "answers": {}, "camera_on": False}}}]}}
 
 
 def quotes(lid):

@@ -33,11 +33,10 @@ def lead(s, name):
     return next(l for l in dash(s)["leads"] if l["name"] == name)
 
 
-def tool_body(token, name="get_quote_estimate", args=None):
+def tool_body(token, name="update_scope", args=None):
     return {"message": {"type": "tool-calls", "call": {"assistantOverrides": {"variableValues": {"lead_token": token}}},
                         "toolCallList": [{"id": "tcX", "function": {"name": name, "arguments": args or {
-                            "project_type": "bathroom_remodel", "room_size": "medium", "finish_level": "standard",
-                            "requested_changes": ["walk-in shower and double vanity"]}}}]}}
+                            "said": "I want a walk-in shower and a double vanity", "answers": {}, "camera_on": False}}}]}}
 
 
 # SEC-001: Vapi endpoints locked without secret

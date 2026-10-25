@@ -10,7 +10,7 @@ from core.status import touch
 from core.quotes import latest_quote, save_quote
 from core import flow
 from pricing.engine import new_state, adjust_state, price, margin_pct, drivers, margin_discount_cap
-from itemizer.engine import turn as itemizer_turn
+from itemizer.engine import turn as itemizer_turn, save_itemized
 
 router = APIRouter(prefix="/api/vapi")
 logger = logging.getLogger("vapi")
@@ -47,17 +47,6 @@ async def tool_estimate(lead, args, mode):
         return {"status": "pending", "say": "Pricing is not available right now."}
     st, say = new_state(args)
     return say if st is None else await persist(lead, st, say)
-
-
-async def save_itemized(lead, priced):
-    q = await latest_quote(lead["id"])
-    lines = [{k: v for k, v in line.items() if k != "facts"} for line in priced["lines"]]
-    if q and q["total"] == priced["total"] and [i["label"] for i in q["line_items"]] == [i["label"] for i in lines]:
-        return q
-    status = "live" if lead["status"] == "walkthru_initiated" else "sent"
-    return await save_quote(lead, lines, priced["total"], status, {
-        "low": priced["low"], "high": priced["high"], "drivers": priced["drivers"], "assumptions": priced["assumptions"],
-        "range_pct": priced["range_pct"], "source": "itemizer"})
 
 
 async def tool_update_scope(lead, args, mode):

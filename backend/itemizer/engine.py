@@ -1,6 +1,7 @@
 """Itemizer: words -> KB tasks -> items + facts (ladders) -> one next_action -> deterministic price. The LLM never prices."""
 import re
 from core.db import db, iso
+from core.quotes import latest_quote, save_quote
 from pricing.engine import r500, is_rush, margin_discount_cap, DEPOSIT_PCT, RUSH_SURCHARGE
 from itemizer.kb import load_kb
 from itemizer import llm
@@ -8,6 +9,8 @@ from itemizer import llm
 TIERS = {"refresh": 0, "standard": 1, "premium": 2}
 UNKNOWN = {"unknown", "not sure", "don't know", "dont know", "no idea", "", None}
 MAX_SHOWS = 3
+YES = {"yes", "yeah", "yep", "right", "correct", "that's right", "true"}
+NO = {"no", "nope", "wrong", "not right", "incorrect"}
 
 
 def detect_room(said, current):
@@ -23,8 +26,13 @@ def fact_key(name, scope, item_id, room):
     return f"{name}@{item_id if scope == 'item' else room if scope == 'room' else 'job'}"
 
 
-def measure(value):
-    """Returns (sq ft or number, method) from a measurement answer."""
+def steps(a, b, area):
+    a *= 2.5
+    return (a * b * 2.5 if b else a * a if area else a), "steps"
+
+
+def measure(value, area=False):
+    """Returns (sq ft or ft or count, method) from a measurement answer. A step is about 2.5 ft."""
     if isinstance(value, (int, float)):
         return float(value), "known"
     if isinstance(value, dict):
@@ -32,10 +40,14 @@ def measure(value):
         if m == "tiles":
             return value["x"] * value["y"] * (value.get("tile_in", 12) / 12.0) ** 2, "tiles"
         if m == "steps":
-            return value["a"] * 2.5 * value.get("b", 1) * (2.5 if "b" in value else 1), "steps"
+            return steps(value["a"], value.get("b"), area)
         if m == "tape":
             return value["a"] * value.get("b", 1), "tape"
     t = str(value).lower()
+    if "step" in t:
+        nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", t)]
+        if nums:
+            return steps(nums[0], nums[1] if len(nums) > 1 else None, area)
     tm = re.search(r"(\d+)\s*(?:tiles?\s*)?(?:by|x)\s*(\d+)(?:\s*tiles?)?(?:\s*(?:at|of)\s*(\d+)\s*(?:in|inch))?", t)
     if tm and ("tile" in t or tm[3]):
         return int(tm[1]) * int(tm[2]) * ((int(tm[3] or 12)) / 12.0) ** 2, "tiles"
@@ -147,12 +159,21 @@ class Itemizer:
             for f in self.facts_named(name):
                 if f["state"] in ("resolved",) and f["basis"] in ("seen", "measured"):
                     continue
+                if f.get("pending_confirm") is not None and isinstance(val, str):
+                    v, seen = val.strip().lower().rstrip(".!"), f["pending_confirm"]
+                    f["pending_confirm"] = None
+                    if v in YES:
+                        self.resolve(f, seen, "seen", 1.0, f["evidence"])
+                        continue
+                    if v in NO:
+                        self.advance(f, camera_on, "rejected")
+                        continue
                 if isinstance(val, str) and val.strip().lower() in UNKNOWN or val is None:
                     if f["state"] in ("open", "asked"):
                         self.advance(f, camera_on, "unknown")
                     continue
                 if self.kbf[name].get("numeric"):
-                    num, method = measure(val)
+                    num, method = measure(val, "sq ft" in self.kbf[name]["label"])
                     if num is None:
                         continue
                     self.resolve(f, round(num, 1), "measured" if method in ("tiles", "steps", "tape") else "said", evidence={"utterance": str(val), "method": method})
@@ -228,8 +249,11 @@ class Itemizer:
         assumed = [f for f in self.s["facts"] if f["state"] == "assumed"]
         pct = min(25, 10 + 5 * len(assumed)) / 100.0
         low, high = min(r500(total * (1 - pct)), total), max(r500(total * (1 + pct)), total)
+        notes = [f"Assumed {self.kbf[f['name']]['label']}: {f['value']}" for f in assumed]
+        if self.has("water_damage_allowance"):
+            notes.append("Water damage allowance until the site visit")
         return {"lines": lines, "total": int(total), "low": low, "high": high, "range_pct": int(pct * 100),
-                "assumptions": [f"Assumed {self.kbf[f['name']]['label']}: {f['value']}" for f in assumed],
+                "assumptions": notes,
                 "drivers": [i["label"] for i in self.live_items()][:3], "deposit_percent": DEPOSIT_PCT,
                 "deposit_amount": int(round(total * DEPOSIT_PCT / 100.0))}
 
@@ -244,6 +268,8 @@ def keyword_tasks(said, room, tasks):
             hits.append(tid)
     if "remove_vanity" in hits and "new_vanity" in hits and not re.search(r"\bnew\b", t):
         hits.remove("new_vanity")
+    if "floor_tile" in hits and "flooring" in hits:
+        hits.remove("flooring")
     return hits
 
 
@@ -264,9 +290,11 @@ async def turn(lead, said="", answers=None, camera_on=False):
     iz = Itemizer(s, kb)
     s["camera_on"] = camera_on
     s["room"] = detect_room(said, s["room"])
-    for f in s["facts"]:  # asked last turn and not answered now -> next channel
+    for f in s["facts"]:  # asked twice and not answered -> next channel
         if f["state"] == "asked" and f["name"] not in (answers or {}):
-            iz.advance(f, camera_on, "no answer")
+            f["skips"] = f.get("skips", 0) + 1
+            if f["skips"] >= 2:
+                iz.advance(f, camera_on, "no answer")
     new = []
     if said and said.strip():
         tids = keyword_tasks(said, s["room"], iz.tasks)
@@ -329,5 +357,22 @@ async def on_goal_result(lead, goal):
         extra = f" (+${after - before:,})" if after > before else f" (-${before - after:,})" if after < before else ""
         what = "; ".join(i["label"].lower() for i in added) or "the estimate changed"
         s["insights"].append({"text": f"Camera: {kb[1][f['name']]['label']} is {f['value'] or goal.get('value')}; {what}{extra}.", "delivered": False, "at": iso()})
+    priced = iz.price(contractor) if s.get("last_total") is not None and iz.live_items() else None
+    if priced:
+        s["last_total"] = priced["total"]
     await save_session(s)
-    return {"ok": True, "fact": f, "added": [i["label"] for i in added], "total_before": before, "total_after": after}
+    version = (await save_itemized(lead, priced))["version"] if priced else None
+    return {"ok": True, "fact": f, "added": [i["label"] for i in added], "total_before": before, "total_after": after, "version": version}
+
+
+async def save_itemized(lead, priced):
+    """New quote version only when lines, total, range or assumptions change."""
+    q = await latest_quote(lead["id"])
+    lines = [{k: v for k, v in line.items() if k != "facts"} for line in priced["lines"]]
+    if q and q.get("source") == "itemizer" and [(i["label"], i["amount"]) for i in q["line_items"]] == [(i["label"], i["amount"]) for i in lines] \
+            and all(q.get(k) == priced[k] for k in ("total", "low", "high", "assumptions")):
+        return q
+    status = "live" if lead["status"] == "walkthru_initiated" else "sent"
+    return await save_quote(lead, lines, priced["total"], status, {
+        "low": priced["low"], "high": priced["high"], "drivers": priced["drivers"], "assumptions": priced["assumptions"],
+        "range_pct": priced["range_pct"], "source": "itemizer"})

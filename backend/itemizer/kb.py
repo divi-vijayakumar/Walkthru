@@ -254,8 +254,8 @@ async def seed_kb(force=False):
         await db[c].delete_many({})
     await db.kb_tasks.insert_many([{"task_id": k, **v} for k, v in TASKS.items()])
     await db.kb_facts.insert_many([{"fact_id": k, **v} for k, v in FACTS.items()])
-    await db.kb_rules.insert_many(RULES + [{"rule_id": d[0], "kind": "driver", "name": d[1], "how": d[2], "effect": d[3]} for d in DRIVERS]
-                                  + [{"rule_id": m[0], "kind": "measure_method", "name": m[1], "how": m[2], "accuracy": m[3], "best_for": m[4], "uncertainty_pct": m[5]} for m in METHODS])
+    await db.kb_rules.insert_many(RULES + [{"rule_id": f"driver_{d[0]}", "kind": "driver", "name": d[1], "how": d[2], "effect": d[3]} for d in DRIVERS]
+                                  + [{"rule_id": f"measure_{m[0]}", "kind": "measure_method", "name": m[1], "how": m[2], "accuracy": m[3], "best_for": m[4], "uncertainty_pct": m[5]} for m in METHODS])
 
 
 async def load_kb():

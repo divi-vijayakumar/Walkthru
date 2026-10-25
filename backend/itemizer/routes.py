@@ -11,6 +11,40 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 KINDS = {"tasks": ("kb_tasks", "task_id"), "facts": ("kb_facts", "fact_id"), "rules": ("kb_rules", "rule_id")}
 
 
+LADDER = {"camera", "show", "ask", "measure", "assume"}
+NUM = (int, float)
+
+
+def price_ok(p):
+    return isinstance(p, dict) and (isinstance(p.get("amount"), NUM) or (isinstance(p.get("tiers"), list) and len(p["tiers"]) == 3
+                                    and all(isinstance(v, NUM) for v in p["tiers"])))
+
+
+def kb_problem(kind, doc, tasks, facts):
+    """Returns what's wrong with an edited KB doc, or None."""
+    if kind == "tasks":
+        if not isinstance(doc.get("label"), str) or not all(isinstance(doc.get(k), list) for k in ("facts", "price", "triggers", "tags")):
+            return "A task needs label, facts, price, triggers and tags"
+        if not doc["price"] or not all(price_ok(p) for p in doc["price"]):
+            return "Each price needs a number amount or three tier numbers"
+        if any(f not in facts for f in doc["facts"]):
+            return "Unknown fact in facts"
+    elif kind == "facts":
+        if doc.get("scope") not in ("item", "room", "job") or not isinstance(doc.get("label"), str):
+            return "A fact needs scope (item, room or job) and label"
+        if not isinstance(doc.get("ladder"), list) or not doc["ladder"] or not set(doc["ladder"]) <= LADDER:
+            return "Ladder steps must be camera, show, ask, measure or assume"
+        if "default" not in doc or not all(isinstance(doc.get(k), str) for k in ("question", "show")) or not isinstance(doc.get("goals"), list):
+            return "A fact needs default, question, show and goals"
+    elif doc.get("kind") == "rule":
+        if doc.get("add") not in tasks or not all(isinstance(doc.get(k), list) for k in ("has", "lacks")) \
+                or not all(isinstance(doc.get(k), dict) for k in ("facts", "lt")):
+            return "A rule needs add (a task id), has, lacks, facts and lt"
+    elif doc.get("kind") not in ("driver", "measure_method") or not isinstance(doc.get("name"), str):
+        return "Kind must be rule, driver or measure_method, with a name"
+    return None
+
+
 class TurnIn(BaseModel):
     said: str = ""
     answers: dict = {}
@@ -40,6 +74,11 @@ async def kb_update(kind: str, doc_id: str, doc: dict):
     if doc.get(key) != doc_id:
         raise HTTPException(422, f"{key} can't be changed")
     doc.pop("_id", None)
+    tasks = {t["task_id"] async for t in db.kb_tasks.find({}, {"task_id": 1})}
+    facts = {f["fact_id"] async for f in db.kb_facts.find({}, {"fact_id": 1})}
+    problem = kb_problem(kind, doc, tasks, facts)
+    if problem:
+        raise HTTPException(422, problem)
     res = await db[coll].replace_one({key: doc_id}, doc)
     if not res.matched_count:
         raise HTTPException(404, "Not found")
@@ -66,7 +105,10 @@ async def dev_turn(lead_id: str, body: TurnIn):
 
 @router.post("/itemizer/{lead_id}/goal-result")
 async def goal_result(lead_id: str, body: GoalIn):
-    return await engine.on_goal_result(await flow.get_lead(lead_id), body.model_dump())
+    out = await engine.on_goal_result(await flow.get_lead(lead_id), body.model_dump())
+    if not out["ok"]:
+        raise HTTPException(404, out["error"])
+    return out
 
 
 @router.post("/itemizer/{lead_id}/reset")

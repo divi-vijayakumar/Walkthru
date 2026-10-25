@@ -58,8 +58,10 @@ def token_of(s, name):
     return lead_by_name(s, name)["portal_token"]
 
 
-BATH_ARGS = {"project_type": "bathroom_remodel", "room_size": "medium", "finish_level": "standard",
-             "requested_changes": ["walk-in shower and double vanity"]}
+# update_scope args that price in one turn (itemizer): remove vanity, leave open, floor mount
+BATH_ARGS = {"said": "I want this sink gone", "camera_on": False, "answers": {
+    "finish_level": "standard", "water_damage": "no", "timeline": "in two months", "sinks": "1",
+    "replacing_vanity": "open", "vanity_mount": "floor"}}
 
 
 # Health + dashboard
@@ -103,20 +105,22 @@ def test_estimate_and_discount(s):
     token = s.get(f"{API}/dashboard").json()
     token = next(l for l in token["leads"] if l["id"] == lid)["portal_token"]
     assert s.post(f"{API}/portal/{token}/call/start").status_code == 200
-    res = tool_call(s, token, "get_quote_estimate", BATH_ARGS)
+    res = tool_call(s, token, "update_scope", BATH_ARGS)
     out = json.loads(res[0]["result"])
-    assert (out["total"], out["low"], out["high"]) == (27600, 25000, 30500)
+    assert out["status"] == "ok" and out["low"] <= out["total"] <= out["high"]
+    base = out["total"]
     res = tool_call(s, token, "request_adjustment", json.dumps(
         {"change_type": "discount_request", "can_sign_within_7_days": True, "flexible_timeline_weeks": 4}))
     out = json.loads(res[0]["result"])
-    assert out["total"] == 27600 - round(27600 * 0.06)
+    assert out["total"] == base - round(base * 0.06)
     res = tool_call(s, token, "request_adjustment",
                     {"change_type": "discount_request", "can_sign_within_7_days": True, "flexible_timeline_weeks": 8})
     out = json.loads(res[0]["result"])
     assert out["status"] == "limit_reached"
     # non-bathroom
+    # legacy tool is gone
     res = tool_call(s, token, "get_quote_estimate", {"project_type": "kitchen_remodel"})
-    assert json.loads(res[0]["result"])["status"] == "needs_human"
+    assert "Unknown tool" in res[0]["error"]
     # webhook end-of-call -> quote_generated
     assert end_call(s, token)["ended"] is True
     l = next(x for x in dash(s)["leads"] if x["id"] == lid)
@@ -200,14 +204,15 @@ def test_portal_flow(s):
     assert p["lead"]["status"] == "invited" and p["voice"]["mode"] == "mock"
     s.post(f"{API}/portal/{token}/call/start")
     assert s.post(f"{API}/portal/{token}/call/caption", json={"role": "user", "text": "hi"}).status_code == 200
-    tool_call(s, token, "get_quote_estimate", BATH_ARGS)
+    tool_call(s, token, "update_scope", BATH_ARGS)
     assert s.post(f"{API}/portal/{token}/call/end", json={}).json()["ended"] is True
     assert s.get(f"{API}/portal/{token}").json()["lead"]["status"] == "quote_generated"
     assert s.post(f"{API}/portal/{token}/contract/sign", json={"name": "X Y"}).status_code == 400
     assert s.post(f"{API}/portal/{token}/contract/open").status_code == 200
     assert s.post(f"{API}/portal/{token}/contract/sign", json={"name": "a"}).status_code == 422
     r = s.post(f"{API}/portal/{token}/contract/sign", json={"name": "TEST Portal"})
-    assert r.status_code == 200 and r.json()["payment"]["amount"] == 1380
+    q = s.get(f"{API}/portal/{token}").json()["quote"]
+    assert r.status_code == 200 and r.json()["payment"]["amount"] == q["deposit_amount"]
     # simulated /deposit/pay was removed (Stripe now); use dev advance shortcut
     assert s.post(f"{API}/portal/{token}/deposit/pay").status_code in (404, 405)
     r = s.post(f"{API}/dev/leads/{lid}/advance")

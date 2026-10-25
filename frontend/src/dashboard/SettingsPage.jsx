@@ -6,7 +6,11 @@ import { api, errorText } from "@/shared/api";
 const TABS = [["tasks", "Tasks and prices", "task_id"], ["facts", "Facts and ladders", "fact_id"], ["rules", "Rules, drivers and measuring", "rule_id"]];
 
 const summary = (tab, d) => {
-  if (tab === "tasks") return `${d.room || "any room"} · ${d.price.map((p) => (p.tiers ? p.tiers.join(" / ") : p.amount) + (p.qty ? ` per ${p.qty}` : "")).join(" + ")}`;
+  if (tab === "tasks") {
+    const when = (p) => (p.when ? `if ${Object.entries(p.when).map(([k, v]) => `${k} ${v.join("/")}`).join(", ")}: ` : "");
+    const amt = (p) => `${when(p)}${p.label ? `${p.label} ` : ""}${p.tiers ? p.tiers.join(" / ") : p.amount}${p.qty ? ` per ${p.qty}` : ""}`;
+    return `${d.room || "any room"} · ${d.price.map(amt).join(" · ")}`;
+  }
   if (tab === "facts") return `${d.scope} · ${d.ladder.join(" > ")} · default ${d.default}`;
   return d.kind === "rule" ? `adds ${d.add} · ${d.note}` : `${d.kind} · ${d.name}`;
 };
