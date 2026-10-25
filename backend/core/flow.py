@@ -119,15 +119,37 @@ async def end_call(lead, transcript=None, auto_quote=True):
         await db.call_sessions.update_one({"id": session["id"]}, {"$set": upd})
     await set_status(lead["id"], "walkthru_completed")
     lead = await get_lead(lead["id"])
+    if auto_quote:
+        await finish_quote(lead, session["id"] if session else None)
+        return {"ended": True}
     quote = await latest_quote(lead["id"])
     if quote and (quote.get("total") or 0) <= 0:  # a $0 quote is never ready
         quote = None
-    if quote and auto_quote:
-        await db.quotes.update_many({"lead_id": lead["id"], "status": "live"}, {"$set": {"status": "sent"}})
-        await mark_quote_ready(lead)
-    elif not quote and not lead.get("followup_queued"):
+    if not quote and not lead.get("followup_queued"):
         await touch(lead["id"], {"quote_pending": True, "quote_pending_due_at": iso(now() + timedelta(minutes=15))})
     return {"ended": True}
+
+
+async def finish_quote(lead, call_session_id=None):
+    """Every call ends with an exact quote; it goes out on WhatsApp once per version unless Alex queued a follow-up."""
+    from itemizer.engine import ensure_quote
+    cs = call_session_id and await db.call_sessions.find_one({"id": call_session_id}, {"_id": 0, "started_at": 1})
+    q = await ensure_quote(lead, cs["started_at"] if cs else None)
+    if not q or (q.get("total") or 0) <= 0:
+        await touch(lead["id"], {"quote_pending": True, "quote_pending_due_at": iso(now() + timedelta(minutes=15))})
+        return None
+    await db.quotes.update_many({"lead_id": lead["id"], "status": "live"}, {"$set": {"status": "sent"}})
+    lead = await get_lead(lead["id"])
+    if lead["status"] in ("walkthru_initiated", "walkthru_completed"):
+        await set_status(lead["id"], "quote_generated", {"quote_pending": False, "quote_pending_due_at": None})
+    if lead.get("followup_queued"):
+        return q
+    claim = await db.leads.update_one({"id": lead["id"], "quote_sent_version": {"$ne": q["version"]}}, {"$set": {"quote_sent_version": q["version"]}})
+    if claim.modified_count:
+        c = await get_contractor()
+        await send_sms(lead, f"Here's your quote from today's call with {c['agent_name']}: ${q['total']:,}. "
+                             f"See the details: {portal_link(lead['portal_token'])}", "quote_ready")
+    return q
 
 
 async def default_quote(lead):

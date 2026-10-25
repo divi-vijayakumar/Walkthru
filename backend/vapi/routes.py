@@ -59,8 +59,12 @@ async def tool_update_scope(lead, args, mode):
     session = await flow.active_session(lead["id"])  # Alex can't see the camera; the portal's /call/camera is the truth
     cam = session.get("camera_on") if session else None
     cam = bool(args.get("camera_on")) if cam is None else bool(cam)
-    out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, cam, bool(args.get("wants_price")))
+    out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, cam, bool(args.get("wants_price")),
+                                      [str(x) for x in (args.get("skipped") or []) if x][:20])
     camera.after_turn(lead)
+    out.pop("low", None)
+    out.pop("high", None)
+    out.pop("range_pct", None)
     if priced:
         q = await save_itemized(lead, priced)
         out["version"] = q["version"] if q else None
@@ -236,6 +240,8 @@ async def save_report(lead, msg):
     lines, art = parse_transcript(msg), msg.get("artifact") or {}
     if not s.get("ended_at"):
         await flow.end_call(lead, lines)
+    else:  # portal ended it first or the homeowner hung up: still make sure a quote exists and went out
+        await flow.finish_quote(await flow.get_lead(lead["id"]), s["id"])
     rec = art.get("recordingUrl") or (art.get("recording") or {}).get("url") or msg.get("recordingUrl")
     upd = {"vapi_call_id": call_id, "summary": (msg.get("analysis") or {}).get("summary") or msg.get("summary"), "report_at": iso()}
     if lines:

@@ -61,7 +61,7 @@ class TurnIn(BaseModel):
     answers: dict = {}
     camera_on: bool = False
     wants_price: bool = False
-
+    skipped: list[str] = []
 
 class PriceCustomIn(BaseModel):
     label: str = Field(min_length=2, max_length=80)
@@ -120,7 +120,7 @@ async def session(lead_id: str):
 @router.post("/itemizer/{lead_id}/turn")
 async def dev_turn(lead_id: str, body: TurnIn):
     lead = await flow.get_lead(lead_id)
-    out, priced = await engine.turn(lead, body.said, body.answers, body.camera_on, body.wants_price)
+    out, priced = await engine.turn(lead, body.said, body.answers, body.camera_on, body.wants_price, body.skipped)
     camera.after_turn(lead)
     return {**out, "lines": priced["lines"] if priced else []}
 

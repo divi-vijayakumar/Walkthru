@@ -36,8 +36,7 @@ def build_quote_pdf(quote: dict, lead: dict, contractor: dict) -> bytes:
     items = quote["line_items"]
     rows = [[p("Item", 9, MUTED, True), p("Price", 9, MUTED, True, 2)]]
     rows += [[p(i["label"], 10.5), "To be priced" if i.get("amount") is None else usd(i["amount"])] for i in items]
-    rows += [[p("Estimated total", 12, bold=True), usd(quote["total"])],
-             [p("Likely range", 10.5, MUTED), f"{usd(quote['low'])} to {usd(quote['high'])}"],
+    rows += [[p("Total", 12, bold=True), usd(quote["total"])],
              [p(f"Deposit after signing ({quote['deposit_pct']}%)", 10.5, bold=True), usd(quote["deposit_amount"])]]
     n = len(items)
     table = Table(rows, colWidths=[4.6 * inch, 2.2 * inch], hAlign="LEFT")
@@ -46,7 +45,7 @@ def build_quote_pdf(quote: dict, lead: dict, contractor: dict) -> bytes:
         ("FONTNAME", (1, 1), (1, -1), "Helvetica"), ("FONTSIZE", (1, 1), (1, -1), 10.5), ("TEXTCOLOR", (1, 0), (1, -1), INK),
         ("LINEBELOW", (0, 0), (-1, n), 0.6, LINE), ("LINEABOVE", (0, n + 1), (-1, n + 1), 1.2, INK),
         ("FONTNAME", (1, n + 1), (1, n + 1), "Helvetica-Bold"), ("FONTSIZE", (1, n + 1), (1, n + 1), 12),
-        ("FONTNAME", (1, n + 3), (1, n + 3), "Helvetica-Bold"),
+        ("FONTNAME", (1, n + 2), (1, n + 2), "Helvetica-Bold"),
         ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7), ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))

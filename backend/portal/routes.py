@@ -59,7 +59,7 @@ async def portal(token: str, live: bool = False):
         "contract": await db.contracts.find_one(active, {"_id": 0}, sort=[("created_at", -1)]),
         "payment": await db.payments.find_one(active, {"_id": 0}, sort=[("created_at", -1)]),
         "session": session,
-        "insights": await claim_insights(lead["id"]) if live and session else [],
+        "insights": await claim_insights(lead["id"]) if live and session and os.environ.get("VOICE_MODE") != "vapi" else [],
         "voice": voice_config(),
         "payments_test_mode": os.environ.get("STRIPE_MODE") == "test",
     }

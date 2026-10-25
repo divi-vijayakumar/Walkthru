@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Mic } from "lucide-react";
-import { money, range } from "@/shared/format";
+import { money } from "@/shared/format";
 import { SeenFrame } from "@/shared/SeenFrame";
 import { QuotePdfLink } from "@/shared/QuotePdfLink";
 import { PortalHeader, PortalShell, PrimaryButton, Row, Steps } from "@/portal/PortalShell";
@@ -26,8 +26,7 @@ export const QuoteScreen = ({ data, onTalk, onSign, busy }) => {
       <Steps active={0} />
       <section className="mt-4 rounded-2xl border border-wt-line bg-white p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[15px] font-semibold text-wt-muted">Estimated total, v{q.version}</span>
-          <span className="text-[14px] text-wt-muted tabular">{range(q)}</span>
+          <span className="text-[15px] font-semibold text-wt-muted">Total, v{q.version}</span>
         </div>
         <p data-testid="quote-total" className="font-display text-[40px] font-bold leading-tight text-wt-ink tabular">{money(q.total)}</p>
         <LineItems quote={q} />

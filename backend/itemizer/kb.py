@@ -111,6 +111,8 @@ FACTS = {
     "custom_out": F("item", [A], "what comes out", "", "What's coming out, if anything?"),
     "custom_in": F("item", [A], "what goes in", "", "What goes in its place?"),
     "custom_size": F("item", [A], "how big", "", "Roughly how big is it?"),
+    "shower_wall_area": F("item", [C, M], "shower wall area (sq ft)", 80, "", show="If it's easy, tell me roughly how wide and tall the shower walls are.", numeric=True),
+    "shower_tile_level": F("item", [X], "shower tile level", "standard"),
 }
 
 OPTIONS = {
@@ -148,7 +150,7 @@ OPTIONS.update({
     "wall_vents": ["yes", "no"], "load_bearing": ["likely", "unlikely"], "tile_replacement": ["tile", "vinyl", "engineered wood", "paint"],
     "tile_where": ["floor", "wall", "both"], "vanity_plan": ["yes", "no"], "tub_replacement": ["shower", "tub", "nothing"],
     "mirror_type": ["framed", "frameless", "medicine cabinet"], "sink_type": ["pedestal", "wall-mounted", "vanity cabinet"],
-    "wall_finish": ["tile", "paint", "wallpaper"],
+    "wall_finish": ["tile", "paint", "wallpaper"], "shower_tile_level": ["refresh", "standard", "premium"],
 })
 CAMERA_GOALS["wall_length"] = ("Estimate the wall's length in feet. Measure it against the door (80 in tall) or the counter (36 in tall). "
                                "Reply with value and unit ft.")
@@ -203,6 +205,8 @@ EXTRA = {  # how each fact behaves in a call; all editable in Rate card and sett
     "wall_finish": {"priority": 2, "seen": {"tile": "The walls are tiled", "paint": "The walls are painted", "wallpaper": "The walls have wallpaper"},
                     "synonyms": {"painted": "paint", "tiled": "tile"}},
     "wall_outlets": {"priority": 2}, "wall_switches": {"priority": 2}, "wall_vents": {"priority": 2},
+    "custom_out": {"always_ask": True}, "custom_in": {"always_ask": True}, "custom_size": {"always_ask": True},
+    "shower_tile_level": {"priority": 2, "from_said": {"premium": r"\bpremium\b", "refresh": r"\b(basic|budget|cheap)\b"}},
 }
 for _k, _v in RANK.items():
     EXTRA.setdefault(_k, {})["p0_rank"] = _v
@@ -276,6 +280,18 @@ TASKS = {
     "bath_accessories": T("bathroom", "Bath accessories (towel bar, ring, paper holder)", [], [P(tiers=[150, 300, 550], label="per set")],
                           [r"\btowel (bars?|rings?|racks?)\b", r"\bpaper holders?\b", r"\baccessor(y|ies)\b"]),
     "accent_wallpaper": T(None, "Accent wallpaper", ["wallpaper_area"], [P(tiers=[6, 9, 14], qty="wallpaper_area")], [r"\bwall ?paper(s|ing|ed)?\b", r"\baccent wall\b"]),
+    "shower_retile": T("bathroom", "Shower wall retile", ["shower_wall_area", "shower_tile_level"],
+                       [P(6, qty="shower_wall_area", label="tile removal"), P(14, qty="shower_wall_area", label="install"),
+                        {**P(tiers=[6, 12, 25], qty="shower_wall_area", label="tile"), "tier_fact": "shower_tile_level"}],
+                       [r"\bre-?til(e|ing)\b", r"\b(tiles?|tiling)\b.*\bshower\b", r"\bshower\b.*\b(tiles?|tiling|panels?)\b"], ["removal"]),
+    "shower_niche_add": T("bathroom", "Shower niche", [], [P(tiers=[350, 550, 900])], [r"\bniches?\b"]),
+    "lighted_mirror": T("bathroom", "Lighted (LED) mirror", [], [P(300, label="install"), P(tiers=[350, 650, 1200], label="mirror")],
+                        [r"\b(led|lighted|lit|backlit|illuminated)\b.*\bmirrors?\b", r"\bmirrors?\b.*\b(led|lights?|lighted|lit|backlit)\b"], ["electrical"]),
+    "mirror_circuit": T("bathroom", "Hardwired electrical line for the mirror", [], [P(450)], auto=True, tags=["electrical"],
+                        because="a lighted mirror needs a hardwired electrical line"),
+    "pkg_bathroom": T("bathroom", "Bathroom remodel, standard finish, medium size (assumed)", [], [P(tiers=[14000, 22000, 38000])], auto=True),
+    "pkg_kitchen": T("kitchen", "Kitchen remodel, standard finish, medium size (assumed)", [], [P(tiers=[25000, 42000, 70000])], auto=True),
+    "pkg_general": T(None, "Remodel project, standard finish, medium size (assumed)", [], [P(tiers=[8000, 15000, 30000])], auto=True),
     "exhaust_fan_lights": T("bathroom", "Exhaust fan and lights", ["fan_exists", "fan_vents_outside", "new_lights"],
                             [P(650, when={"fan_exists": ["no"]}, label="new fan"), P(400, when={"fan_exists": ["yes"], "fan_vents_outside": ["no"]}, label="duct to outside"),
                              P(225, qty="new_lights", label="light install"), P(tiers=[150, 300, 600], qty="new_lights", label="fixtures")],
@@ -396,8 +412,9 @@ RULES = [
     R("wall_floor_patch", "floor_patch_wall", ["wall_removal"], ["flooring"], {"wall_floor_finish": ["patch"]}, note="No new flooring planned"),
     R("wall_new_floor", "flooring", ["wall_removal"], [], {"wall_floor_finish": ["new floor"]}, note="New flooring where the wall stood"),
     R("wall_ceiling", "ceiling_patch", ["wall_removal"], note="Every wall removal patches and paints the ceiling"),
+    R("lighted_mirror_circuit", "mirror_circuit", ["lighted_mirror"], note="Lighted mirrors need a hardwired line"),
 ]
-KB_VERSION = 4
+KB_VERSION = 5
 REPLACE = {"tasks": {"floor_tile", "wall_removal"}, "facts": {"floor_above", "floor_new"}}
 
 DRIVERS = [
