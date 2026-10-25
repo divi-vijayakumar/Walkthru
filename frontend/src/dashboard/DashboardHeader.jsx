@@ -1,3 +1,13 @@
+import { RotateCcw } from "lucide-react";
+
+export const SimulateButton = ({ busy, onClick }) => (
+  <button data-testid="simulate-dhivya-btn" onClick={onClick} disabled={busy}
+    className="flex min-h-[44px] items-center gap-2 rounded-xl border border-wt-line bg-white px-4 py-3 text-[15px] font-bold text-wt-ink transition-colors duration-150 hover:bg-[#F3F4F6] disabled:opacity-60">
+    <RotateCcw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+    {busy ? "Restarting Dhivya…" : "Simulate"}
+  </button>
+);
+
 export const AgentSwitch = ({ enabled, onToggle }) => (
   <div className="flex items-center gap-4 rounded-xl border border-wt-line bg-white px-4 py-3">
     <div>
@@ -22,7 +32,7 @@ export const AgentSwitch = ({ enabled, onToggle }) => (
   </div>
 );
 
-export const DashboardHeader = ({ contractor, onToggle }) => (
+export const DashboardHeader = ({ contractor, onToggle, simulating, onSimulate }) => (
   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
     <div>
       <div className="flex items-center gap-3">
@@ -35,6 +45,9 @@ export const DashboardHeader = ({ contractor, onToggle }) => (
         From first text to deposit, the agent runs each lead. You watch and step in when needed.
       </p>
     </div>
-    {contractor && <AgentSwitch enabled={contractor.agent_enabled} onToggle={onToggle} />}
+    <div className="flex flex-wrap items-start gap-3">
+      <SimulateButton busy={simulating} onClick={onSimulate} />
+      {contractor && <AgentSwitch enabled={contractor.agent_enabled} onToggle={onToggle} />}
+    </div>
   </div>
 );

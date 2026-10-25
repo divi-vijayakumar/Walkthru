@@ -155,3 +155,31 @@ async def drop(lead_id: str):
 async def reset():
     await reset_seed()
     return {"reset": True}
+
+
+SIM_NAME = {"$regex": "^\\s*dhivya\\s+vijayakumar\\s*$", "$options": "i"}
+LEAD_DATA = ("call_sessions", "quotes", "pricing_states", "contracts", "payments", "payment_transactions", "followups",
+             "sms_log", "itemizer_sessions", "itemizer_goals", "media")
+
+
+@router.post("/dev/simulate-dhivya")
+async def simulate_dhivya():
+    """Wipe Dhivya's lead and everything tied to it, then re-add her so the walkthrough starts fresh."""
+    lead = await db.leads.find_one({"name": SIM_NAME}, {"_id": 0}, sort=[("created_at", -1)])
+    if lead:
+        tpl = {k: lead[k] for k in ("name", "phone", "source", "ask")}
+        await db.meta.update_one({"_id": "simulate_lead"}, {"$set": tpl}, upsert=True)
+    else:
+        tpl = await db.meta.find_one({"_id": "simulate_lead"}, {"_id": 0})
+        if not tpl:
+            raise HTTPException(404, "Dhivya's lead isn't in the system")
+    ids = [d["id"] async for d in db.leads.find({"name": SIM_NAME}, {"id": 1})]
+    sessions = [d["id"] async for d in db.call_sessions.find({"lead_id": {"$in": ids}}, {"id": 1})]
+    goals = [d["goal_id"] async for d in db.percia_goals.find({"session_id": {"$in": sessions}}, {"goal_id": 1})]
+    for coll in LEAD_DATA:
+        await db[coll].delete_many({"lead_id": {"$in": ids}})
+    await db.percia_goals.delete_many({"goal_id": {"$in": goals}})
+    await db.percia_frames.delete_many({"goal_id": {"$in": goals}})
+    await db.leads.delete_many({"id": {"$in": ids}})
+    new, agent = await flow.create_lead(tpl["name"], tpl["phone"], tpl["source"], tpl["ask"])
+    return {"lead": new, "agent": agent, "removed": len(ids)}

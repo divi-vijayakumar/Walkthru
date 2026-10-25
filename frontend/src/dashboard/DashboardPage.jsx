@@ -48,6 +48,7 @@ const useDashboard = () => {
 export default function DashboardPage() {
   const { data, flash, load } = useDashboard();
   const [selectedId, setSelectedId] = useState(null);
+  const [simulating, setSimulating] = useState(false);
   const drawerRef = useRef(null);
   const now = useNow(1000);
 
@@ -75,13 +76,28 @@ export default function DashboardPage() {
     load();
   };
 
+  const simulate = async () => {
+    setSimulating(true);
+    try {
+      const { data: r } = await api.post("/dev/simulate-dhivya", null, { timeout: 60000 });
+      if (r.agent) showSmsToast(r.agent.sms, r.agent.link, r.lead.name);
+      else toast(`${r.lead.name} re-added`, { description: "Agent is off, so press Start agent to send her invite" });
+      setSelectedId(r.lead.id);
+      load();
+    } catch (e) {
+      toast.error(errorText(e, "Couldn't restart Dhivya"));
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   const selected = data?.leads.find((l) => l.id === selectedId) || data?.leads[0];
 
   return (
     <div className="min-h-screen bg-wt-ground lg:flex">
       <Sidebar contractor={data?.contractor} />
       <main data-testid="dashboard-page" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <DashboardHeader contractor={data?.contractor} onToggle={toggleAgent} />
+        <DashboardHeader contractor={data?.contractor} onToggle={toggleAgent} simulating={simulating} onSimulate={simulate} />
         {!data && <div className="mt-6 h-64 animate-pulse rounded-2xl bg-white" />}
         {data && (
           <>
