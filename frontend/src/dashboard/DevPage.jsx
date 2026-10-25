@@ -53,7 +53,7 @@ const VideoUpload = ({ lead }) => {
         setPct(Math.round(((i + 1) / parts) * 100));
       }
       await api.post(`/dev/leads/${lead.id}/video`, { upload_id: id, content_type: file.type || "video/mp4" }, { timeout: 300000 });
-      toast.success(`${lead.name}: video stored`, { description: "Percia is checking it now. Results reach the quote in under a minute." });
+      toast.success(`${lead.name}: video stored`, { description: "Any open camera questions for this lead are being checked now." });
     } catch (e) {
       toast.error(errorText(e, "Upload failed"));
     } finally {
@@ -96,7 +96,7 @@ const DevLeadRow = ({ lead, onChange }) => {
         <Link data-testid={`dev-portal-${lead.id}`} to={`/w/${lead.portal_token}`} target="_blank"
           className={`${btn} inline-flex items-center border border-wt-line bg-white`}>Open portal</Link>
       )}
-      <VideoUpload lead={lead} />
+      {!done && <VideoUpload lead={lead} />}
       <button data-testid={`dev-advance-${lead.id}`} disabled={done} onClick={() => run("advance", "advanced")}
         className={`${btn} bg-wt-ink text-white disabled:opacity-40`}>Advance one status</button>
       <button data-testid={`dev-drop-${lead.id}`} disabled={done} onClick={() => run("drop", "dropped")}

@@ -138,7 +138,7 @@ async def handle_result(data):
             "frame_url": best.get("frame_url"), "t_ms": best.get("t_ms"), "goal_id": g["goal_id"], "box": best.get("box"), "label": best.get("label")}
     await engine.on_goal_result(lead, goal)
     if data.get("result") == "met":
-        chips = [chip(h["label"]) for h in data.get("hits") or [] if h.get("label")]
+        chips = [chip(h["label"]) for h in sorted(data.get("hits") or [], key=lambda h: -h.get("confidence", 0))[:1] if h.get("label")]
         if chips:
             await db.call_sessions.update_one({"id": g["call_session_id"]}, {"$addToSet": {"chips": {"$each": chips}}})
     return True

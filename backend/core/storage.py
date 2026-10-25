@@ -19,9 +19,9 @@ def _init(force=False):
     return _key
 
 
-def _call(method, path, **kw):
+def _call(method, path, headers=None, **kw):
     for attempt in (0, 1):
-        r = requests.request(method, f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": _init(attempt == 1), **kw.pop("headers", {})},
+        r = requests.request(method, f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": _init(attempt == 1), **(headers or {})},
                              timeout=180, **kw)
         if r.status_code == 404 and attempt == 0 and method == "PUT":
             continue

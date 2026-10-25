@@ -220,8 +220,8 @@ def R(rid, add, has=(), lacks=(), facts=None, lt=None, note="", nots=None):
 
 RULES = [
     R("retile_floating", "retile_under_vanity", ["remove_vanity", "new_vanity"], ["floor_tile"], {"vanity_mount": ["floor"], "new_vanity_mount": ["floating"]}, note="Floor-standing out, floating in, no new floor"),
-    R("retile_open_space", "retile_under_vanity", ["remove_vanity"], ["floor_tile"], {"vanity_mount": ["floor"]},
-      note="Floor-standing vanity removed and no new floor in scope (unless a new floor-standing vanity covers the spot)", nots={"new_vanity_mount": ["floor"]}),
+    R("retile_open_space", "retile_under_vanity", ["remove_vanity"], ["floor_tile", "new_vanity"], {"vanity_mount": ["floor"]},
+      note="Floor-standing vanity removed, no new vanity and no new floor in scope"),
     R("new_vanity_from_answer", "new_vanity", ["remove_vanity"], [], {"replacing_vanity": ["new"]}, note="Homeowner is putting in a new vanity"),
     R("cast_iron", "cast_iron_tub", ["remove_tub"], [], {"cast_iron": ["yes"]}, note="Heavy cast iron tub +$300"),
     R("curbless", "curbless_upgrade", ["walk_in_shower"], [], {"curbless": ["yes"]}, note="Curbless shower +$1,800"),

@@ -17,8 +17,8 @@ export const SeenFrame = ({ item }) => {
         <DialogContent data-testid={`seen-frame-dialog-${item.key}`} className="max-w-lg bg-white">
           <DialogTitle>{item.label}</DialogTitle>
           <DialogDescription>What the camera saw{ev.label ? `: ${ev.label.split(":").pop().trim()}` : ""}</DialogDescription>
-          <div className="relative overflow-hidden rounded-xl">
-            <img data-testid={`seen-frame-img-${item.key}`} src={ev.frame_url} alt={`Camera frame for ${item.label}`} className="block w-full" />
+          <div className="relative mx-auto w-fit overflow-hidden rounded-xl">
+            <img data-testid={`seen-frame-img-${item.key}`} src={ev.frame_url} alt={`Camera frame for ${item.label}`} className="block max-h-[70vh] w-auto" />
             {Array.isArray(box) && box.length === 4 && (
               <span className="pointer-events-none absolute rounded-md border-[3px] border-[#F97316]"
                 style={{ left: `${box[0] * 100}%`, top: `${box[1] * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` }} />

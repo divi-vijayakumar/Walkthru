@@ -1,0 +1,43 @@
+{
+  "summary": "Tested Media Store + Percia + Itemizer hookup (backend + frontend). New pytest test_media_percia.py: 14/14 pass. It covers upload with the portal token and with the service key, idempotent re-upload (same media_id, created:false, 1 doc), exact GET fields, a 15-min signed URL (tampered sig 403), time-range overlap filtering, 401 without a key, old /frames 404, Percia 202, idempotent goal_id, exact goal/hit fields, status done, the callback to a local receiver with a valid HMAC and exact envelope, a media url that 404s (403) -> failed/result null, an invalid video -> failed, /percia/frames returns image/jpeg, and a bad-signature callback 401. One E2E run with the real 50 MB HEVC MOV (test_media_percia_e2e.py) passed in about 47 s. The run uploaded 4 MB chunks, then the duration_ms was 43360. vanity_mount resolved to floor (basis seen, conf 0.96). 'Retile under old vanity' was added with basis seen and evidence.frame_url/box, the frame serves as JPEG, all 3 callbacks were delivered (callback_ok true), and chips were filled. Frontend: the portal quote screen shows the camera button seen-frame-btn-it2, the dialog opens with the real frame (768x1366) and an orange box. The dashboard drawer shows drawer-quote with 4 drawer-line rows and the same camera button and dialog. /dev shows 11 dev-video buttons with hidden inputs accept=video/*. Uploading a webm showed 'Uploading 100%', then the toast 'video stored', and the media doc was created. No /frames references remain in the frontend. A live portal call was not tested because VOICE_MODE=vapi needs a real Vapi call; useClipRecorder was code-reviewed only. Regression: test_itemizer.py + test_itemizer_fixes.py gave 36/38. The 2 failures come from this iteration's intended engine/KB changes; the tests were not updated for them.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "test_itemizer.py::test_gate2_camera_floor_floating", "issue": "Fails: Retile item has rule_id 'retile_open_space' instead of 'retile_floating'. Flow: sink gone -> replacing_vanity new -> camera floor. The generalized retile_open_space fires while new_vanity_mount is still unresolved, because the `not` check only excludes an explicit 'floor'. So it wins before new_vanity_mount=floating is answered, and has() blocks retile_floating. The amount/label are the same. The rule also fires early, before the homeowner says whether the new vanity is floor-standing, and gets removed later if they say floor. Decide: update the test to accept either rule_id, or make retile_open_space require new_vanity absent OR new_vanity_mount resolved to floating."},
+      {"endpoint": "test_itemizer_fixes.py::test_vapi_goal_then_update_scope_same_version", "issue": "Fails: goal-result returns version None. Cause: new guard in engine.on_goal_result returns early ('already answered by the homeowner') when the fact was resolved with basis said. The earlier test in the same module answered vanity_mount='floor' for the same 'vapi' lead. The behaviour is intended, but the test needs updating (use a fresh lead or a fact not yet said)."},
+      {"endpoint": "itemizer/camera.py handle_result chips", "issue": "Chips get every hit label (up to 2 per met goal), not one per met goal: 3 met goals -> 6 chips, e.g. 'Vanity with sink', 'Clean flooring and cabinetry'. That matches the spec wording 'each met hit's label', but the review request expected one chip per met goal. Pick one."},
+      {"endpoint": "core/storage.py _call", "issue": "kw.pop('headers') runs inside the retry loop, so the 2nd attempt (after a 404 re-init) sends the PUT without Content-Type."},
+      {"endpoint": "POST /api/dev/leads/{id}/video", "issue": "The toast always says 'Percia is checking it now' even when no camera goals are open (e.g. all camera facts already resolved), so nothing is sent. Minor UX."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SeenFrame dialog (desktop drawer)", "issues": ["Portrait iPhone frames make the dialog 942px tall in a 1080 viewport. On shorter laptop screens (<=900px) it will overflow without scrolling. Add max-h (e.g. max-h-[70vh] object-contain) on the img. The box overlay must then be positioned against the rendered image box."]},
+      {"screen": "/dev", "issues": ["'Upload walkthrough video' is offered for every lead, including the real lead Dhivya and deposit_received leads. Consider hiding it for real/past-walkthrough leads to avoid accidental Gemini spend or overwriting a real quote."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_media_percia.py", "/app/backend/tests/test_media_percia_e2e.py", "/app/test_reports/pytest/pytest_media_percia.xml", "/app/test_reports/pytest/pytest_itemizer_iter10.xml"],
+  "action_items": [
+    "Update or decide on test_gate2_camera_floor_floating: retile_open_space now pre-empts retile_floating, and fires before new_vanity_mount is known.",
+    "Update test_vapi_goal_then_update_scope_same_version for the new 'camera never overrides a said answer' guard.",
+    "Decide chips: one per met goal vs every hit label.",
+    "Fix storage._call so headers survive the retry.",
+    "Optional: cap the SeenFrame image height; hide the /dev video upload for real leads."
+  ],
+  "critical_code_review_comments": [
+    "useClipRecorder uses seq = t_start_ms (ms offset), not a counter. That is unique per session but fine only while the clocks agree. t_start is computed from client Date.now() minus the server started_at, so clock skew shifts clip times (Math.max(0) hides negative values).",
+    "uploadClip swallows errors and never retries, so the idempotency on seq is never used by the client. A lost clip is gone.",
+    "/api/percia/frames/{frame_id} is unauthenticated (relies on an unguessable uuid). That is acceptable for the portal <img> but should be noted.",
+    "dev_video reads the whole video (up to 400 MB) into memory and runs a probe on a temp copy. OK for dev only.",
+    "Percia worker: frames list is capped at MAX_FRAMES=24. A 43 s clip therefore samples about 1 frame every 1.8 s, not 1 fps, which is fine but differs from the spec.",
+    "Callback verification uses only PERCIA_KEY, while Percia signs with the key that created the goal. This only works while the Itemizer always uses PERCIA_KEY (true today)."
+  ],
+  "updated_files": ["/app/backend/tests/test_media_percia.py", "/app/backend/tests/test_media_percia_e2e.py"],
+  "success_rate": {"backend": "100% new media/percia tests (15/15 incl. E2E); regression 36/38", "frontend": "100% of tested flows"},
+  "seed_data_creation": "None kept. TEST_Media Percia and TEST_E2E Vanity leads were created and fully cleaned up, along with media, percia_goals, percia_frames, itemizer_*, call_sessions, quotes, sms_log and my test user_session. One pre-existing test_session_* user_session (not mine) remains. Dhivya is untouched (pending_deposit).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_media_percia.py -n 0 (about 20 s, one small Gemini call). The E2E is tests/test_media_percia_e2e.py (real Gemini on the 50 MB MOV, about 50 s). Set KEEP_E2E_LEAD=1 to keep the lead for UI checks, then clean up with cleanup_lead(id). To get a quote with a seen line: run the E2E, then call/start, agent/tools update_scope with answers {replacing_vanity:open, finish_level:standard, timeline:'in two months'}, then call/end. The portal then shows the quote screen with seen-frame-btn-it2. Browser auth: cookie session_token from conftest.make_session('divi@velvee.ai'). Never call /api/dev/reset."
+}

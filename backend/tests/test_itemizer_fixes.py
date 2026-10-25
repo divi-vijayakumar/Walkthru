@@ -259,11 +259,12 @@ def test_dedupe_assumption_change_new_version(L):
 
 def test_vapi_goal_then_update_scope_same_version(s, L):
     lead = L("vapi", "Bathroom remodel")
+    before = tool(lead, "update_scope", {"said": "", "answers": {}})
     g = goal(s, lead["id"], "vanity_mount@it1", "met", 0.95, "wall")
-    assert isinstance(g["version"], int)
+    assert g["ignored"] and g["version"] is None  # camera never overrides what the homeowner said
     c = tool(lead, "update_scope", {"said": "", "answers": {}})
     print(g, c)
-    assert c["status"] == "ok" and c["version"] == g["version"] and c["total"] == g["total_after"]
+    assert c["status"] == "ok" and c["version"] == before["version"] and c["total"] == before["total"]
 
 
 # FIX 7 skips
