@@ -87,6 +87,25 @@ FACTS = {
     "live_in": F("job", [A, X], "living in during work", "yes", "Will you be living there during the work?"),
 }
 
+OPTIONS = {
+    "sinks": ["1", "2"], "vanity_mount": ["floor", "floating"], "tub_type": ["alcove", "freestanding", "drop-in"],
+    "cast_iron": ["yes", "no"], "floor_type": ["vinyl", "tile", "wood", "carpet", "laminate"], "fan_exists": ["yes", "no"],
+    "uppers_to_ceiling": ["yes", "no"], "counter_material_now": ["laminate", "tile", "stone", "quartz"], "backsplash_exists": ["yes", "no"],
+    "sink_bowls": ["1", "2"], "hood_type": ["chimney", "under-cabinet", "microwave", "downdraft", "none"], "hood_vents_outside": ["yes", "no"],
+    "dishwasher_exists": ["yes", "no"], "dark_to_light": ["yes", "no"], "wall_cracks": ["yes", "no"], "popcorn": ["yes", "no"],
+    "beam_nearby": ["yes", "no"], "water_damage": ["yes", "no"], "panel_label": ["100A", "150A", "200A", "full"],
+}
+CAMERA_GOALS = {
+    "cast_iron": "Is the tub heavy cast iron (thick enamel edge, very solid)?",
+    "hood_vents_outside": "Does the range hood have a duct going up into the cabinet, wall or ceiling to the outside?",
+    "panel_label": "Read the main breaker amps on the electrical panel label, or say if the panel has no free spaces.",
+    "floor_area": "Count the floor tiles along two walls and estimate the floor area.",
+}
+for _k, _v in OPTIONS.items():
+    FACTS[_k]["options"] = _v
+for _k, _v in CAMERA_GOALS.items():
+    FACTS[_k]["goals"] = [_v]
+
 
 def P(amount=None, tiers=None, qty=None, mult=1, when=None, label=None):
     return {k: v for k, v in dict(amount=amount, tiers=tiers, qty=qty, mult=mult, when=when, label=label).items() if v is not None}
@@ -194,13 +213,15 @@ TASKS = {
 }
 
 
-def R(rid, add, has=(), lacks=(), facts=None, lt=None, note=""):
-    return {"rule_id": rid, "kind": "rule", "add": add, "has": list(has), "lacks": list(lacks), "facts": facts or {}, "lt": lt or {}, "note": note}
+def R(rid, add, has=(), lacks=(), facts=None, lt=None, note="", nots=None):
+    return {"rule_id": rid, "kind": "rule", "add": add, "has": list(has), "lacks": list(lacks), "facts": facts or {}, "lt": lt or {},
+            "not": nots or {}, "note": note}
 
 
 RULES = [
-    R("retile_open_space", "retile_under_vanity", ["remove_vanity"], ["floor_tile", "new_vanity"], {"vanity_mount": ["floor"], "replacing_vanity": ["open", "no"]}, note="Floor-standing vanity removed, space left open, no new floor"),
     R("retile_floating", "retile_under_vanity", ["remove_vanity", "new_vanity"], ["floor_tile"], {"vanity_mount": ["floor"], "new_vanity_mount": ["floating"]}, note="Floor-standing out, floating in, no new floor"),
+    R("retile_open_space", "retile_under_vanity", ["remove_vanity"], ["floor_tile"], {"vanity_mount": ["floor"]},
+      note="Floor-standing vanity removed and no new floor in scope (unless a new floor-standing vanity covers the spot)", nots={"new_vanity_mount": ["floor"]}),
     R("new_vanity_from_answer", "new_vanity", ["remove_vanity"], [], {"replacing_vanity": ["new"]}, note="Homeowner is putting in a new vanity"),
     R("cast_iron", "cast_iron_tub", ["remove_tub"], [], {"cast_iron": ["yes"]}, note="Heavy cast iron tub +$300"),
     R("curbless", "curbless_upgrade", ["walk_in_shower"], [], {"curbless": ["yes"]}, note="Curbless shower +$1,800"),

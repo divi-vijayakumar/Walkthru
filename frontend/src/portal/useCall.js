@@ -38,16 +38,68 @@ export const useLiveQuote = (token, initial) => {
   return { quote, chips };
 };
 
+const CLIP_MS = 10000;
+const MIME = typeof MediaRecorder === "undefined" ? null
+  : ["video/webm;codecs=vp8", "video/webm", "video/mp4"].find((m) => MediaRecorder.isTypeSupported(m)) || "";
+
+const uploadClip = (token, sessionId, tStart, durationMs, blob) => {
+  const form = new FormData();
+  form.append("session_id", sessionId);
+  form.append("kind", "video");
+  form.append("seq", String(tStart));
+  form.append("t_start_ms", String(tStart));
+  form.append("duration_ms", String(durationMs));
+  form.append("file", blob, blob.type.includes("mp4") ? "clip.mp4" : "clip.webm");
+  return api.post("/media", form, { headers: { "X-Portal-Token": token }, timeout: 60000 }).catch(() => {});
+};
+
+// Records ~10 s standalone clips while the camera is on and uploads each one
+const useClipRecorder = (on, token, streamRef) => {
+  useEffect(() => {
+    if (!on || MIME === null) { return undefined; }
+    let stopped = false;
+    let rec = null;
+    let timer = null;
+    const begin = async () => {
+      const { data } = await api.get(`/portal/${token}`);
+      const session = data.session;
+      if (!session || stopped || !streamRef.current) return;
+      const t0 = Date.parse(session.started_at);
+      const next = () => {
+        if (stopped || !streamRef.current) return;
+        const chunks = [];
+        const start = Date.now();
+        rec = new MediaRecorder(streamRef.current, MIME ? { mimeType: MIME, videoBitsPerSecond: 1000000 } : undefined);
+        rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+        rec.onstop = () => {
+          if (chunks.length) uploadClip(token, session.id, Math.max(0, start - t0), Date.now() - start, new Blob(chunks, { type: rec.mimeType || "video/webm" }));
+          next();
+        };
+        rec.start();
+        timer = setTimeout(() => { if (rec.state !== "inactive") rec.stop(); }, CLIP_MS);
+      };
+      next();
+    };
+    begin().catch(() => {});
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      if (rec && rec.state !== "inactive") rec.stop();
+    };
+  }, [on, token, streamRef]);
+};
+
 export const useCamera = (token) => {
   const [on, setOn] = useState(false);
-  const [chips, setChips] = useState([]);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
   const stop = () => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
     setOn(false);
+    setTimeout(() => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }, 300);
     api.post(`/portal/${token}/call/camera`, { on: false }).catch(() => {});
   };
 
@@ -66,22 +118,9 @@ export const useCamera = (token) => {
     if (on && videoRef.current) videoRef.current.srcObject = streamRef.current;
   }, [on]);
 
-  useEffect(() => {
-    if (!on) { return undefined; }
-    const canvas = document.createElement("canvas");
-    const id = setInterval(() => {
-      const v = videoRef.current;
-      if (!v || !v.videoWidth) return;
-      canvas.width = 768;
-      canvas.height = Math.round((v.videoHeight * 768) / v.videoWidth);
-      canvas.getContext("2d").drawImage(v, 0, 0, canvas.width, canvas.height);
-      api.post(`/portal/${token}/frames`, { image: canvas.toDataURL("image/jpeg", 0.7) })
-        .then((r) => setChips(r.data.chips || [])).catch(() => {});
-    }, 2000);
-    return () => clearInterval(id);
-  }, [on, token]);
+  useClipRecorder(on, token, streamRef);
 
   useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
 
-  return { on, start, stop, videoRef, chips };
+  return { on, start, stop, videoRef };
 };

@@ -137,6 +137,9 @@ class Itemizer:
         for name, vals in r["facts"].items():
             if str(self.value(name)).lower() not in [str(v) for v in vals]:
                 return False
+        for name, vals in (r.get("not") or {}).items():
+            if str(self.value(name)).lower() in [str(v) for v in vals]:
+                return False
         for name, limit in r["lt"].items():
             v = self.value(name)
             if v is None or float(v) >= limit:
@@ -348,9 +351,11 @@ async def on_goal_result(lead, goal):
     f = next((x for x in s["facts"] if x["fact_id"] == goal["fact_id"]), None)
     if not f:
         return {"ok": False, "error": "unknown fact"}
+    if f["state"] == "resolved" and f["basis"] in ("said", "measured"):
+        return {"ok": True, "fact": f, "added": [], "ignored": "already answered by the homeowner", "version": None}
     contractor = await db.contractors.find_one({"id": lead["contractor_id"]}, {"_id": 0})
     before = iz.price(contractor)["total"] if iz.live_items() else 0
-    ev = {"goal_id": goal.get("goal_id"), "frame_url": goal.get("frame_url"), "t_ms": goal.get("t_ms")}
+    ev = {k: goal.get(k) for k in ("goal_id", "frame_url", "t_ms", "box", "label")}
     if goal["status"] == "met" and goal.get("confidence", 0) >= 0.75:
         iz.resolve(f, str(goal["value"]).lower(), "seen", goal["confidence"], ev)
     elif goal["status"] in ("met", "ambiguous"):

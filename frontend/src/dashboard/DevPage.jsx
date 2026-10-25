@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api, errorText } from "@/shared/api";
@@ -38,6 +38,41 @@ const CreateLeadForm = ({ onCreated }) => {
   );
 };
 
+const CHUNK = 4 * 1024 * 1024;
+
+const VideoUpload = ({ lead }) => {
+  const input = useRef(null);
+  const [pct, setPct] = useState(null);
+  const send = async (file) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const parts = Math.ceil(file.size / CHUNK);
+    try {
+      for (let i = 0; i < parts; i += 1) {
+        await api.post(`/dev/uploads/${id}/chunk?index=${i}`, file.slice(i * CHUNK, (i + 1) * CHUNK),
+          { headers: { "Content-Type": "application/octet-stream" }, timeout: 120000 });
+        setPct(Math.round(((i + 1) / parts) * 100));
+      }
+      await api.post(`/dev/leads/${lead.id}/video`, { upload_id: id, content_type: file.type || "video/mp4" }, { timeout: 300000 });
+      toast.success(`${lead.name}: video stored`, { description: "Percia is checking it now. Results reach the quote in under a minute." });
+    } catch (e) {
+      toast.error(errorText(e, "Upload failed"));
+    } finally {
+      setPct(null);
+      if (input.current) input.current.value = "";
+    }
+  };
+  return (
+    <>
+      <input ref={input} type="file" accept="video/*" className="hidden" data-testid={`dev-video-input-${lead.id}`}
+        onChange={(e) => e.target.files[0] && send(e.target.files[0])} />
+      <button data-testid={`dev-video-${lead.id}`} disabled={pct !== null} onClick={() => input.current?.click()}
+        className={`${btn} border border-wt-line bg-white disabled:opacity-60`}>
+        {pct === null ? "Upload walkthrough video" : `Uploading ${pct}%`}
+      </button>
+    </>
+  );
+};
+
 const DevLeadRow = ({ lead, onChange }) => {
   const run = async (path, label) => {
     try {
@@ -61,6 +96,7 @@ const DevLeadRow = ({ lead, onChange }) => {
         <Link data-testid={`dev-portal-${lead.id}`} to={`/w/${lead.portal_token}`} target="_blank"
           className={`${btn} inline-flex items-center border border-wt-line bg-white`}>Open portal</Link>
       )}
+      <VideoUpload lead={lead} />
       <button data-testid={`dev-advance-${lead.id}`} disabled={done} onClick={() => run("advance", "advanced")}
         className={`${btn} bg-wt-ink text-white disabled:opacity-40`}>Advance one status</button>
       <button data-testid={`dev-drop-${lead.id}`} disabled={done} onClick={() => run("drop", "dropped")}

@@ -11,6 +11,7 @@ from core.quotes import latest_quote, save_quote
 from core import flow
 from pricing.engine import new_state, adjust_state, price, margin_pct, drivers, margin_discount_cap
 from itemizer.engine import turn as itemizer_turn, save_itemized
+from itemizer import camera
 
 router = APIRouter(prefix="/api/vapi")
 logger = logging.getLogger("vapi")
@@ -53,6 +54,7 @@ async def tool_update_scope(lead, args, mode):
     if mode == "pending":
         return {"status": "pending", "say": "Pricing is not available right now."}
     out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, bool(args.get("camera_on")))
+    camera.after_turn(lead)
     if priced:
         out["version"] = (await save_itemized(lead, priced))["version"]
     return out

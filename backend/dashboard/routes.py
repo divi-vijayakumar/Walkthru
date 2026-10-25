@@ -50,7 +50,7 @@ async def dashboard():
     for lead in leads:
         lead["live"] = sessions.get(lead["id"]) if lead["status"] == "walkthru_initiated" else None
         q = quotes.get(lead["id"])
-        lead["quote"] = {k: q[k] for k in ("version", "total", "low", "high", "status")} if q else None
+        lead["quote"] = {k: q.get(k) for k in ("version", "total", "low", "high", "status", "line_items")} if q else None
     leads.sort(key=lambda lead: (0 if lead["status"] == "walkthru_initiated" else 1, ORDER.get(lead["status"], 99),
                                  -ts(lead["last_activity_at"])))
     gaps = [g for g in (time_to_quote(lead["status_history"]) for lead in leads) if g is not None]

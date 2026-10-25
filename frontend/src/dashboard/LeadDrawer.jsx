@@ -10,6 +10,25 @@ import { SOURCES } from "@/shared/status";
 import { OnCallCard } from "@/dashboard/OnCallCard";
 import { Journey } from "@/dashboard/Journey";
 import { TranscriptDialog } from "@/dashboard/TranscriptDialog";
+import { SeenFrame } from "@/shared/SeenFrame";
+import { money, range } from "@/shared/format";
+
+const QuoteLines = ({ quote }) => (
+  <div data-testid="drawer-quote" className="mt-5 rounded-xl border border-wt-line p-3.5">
+    <div className="flex items-baseline justify-between gap-2">
+      <p className="text-sm font-bold text-wt-ink">Quote v{quote.version}</p>
+      <p className="text-[13px] text-wt-muted tabular">{range(quote)}</p>
+    </div>
+    <ul className="mt-2">
+      {(quote.line_items || []).map((i) => (
+        <li key={i.key} data-testid={`drawer-line-${i.key}`} className="flex items-center justify-between gap-2 border-t border-wt-line py-2 text-[14px]">
+          <span className="flex items-center gap-2">{i.label}<SeenFrame item={i} /></span>
+          <span className="font-bold tabular">{i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
 
 const TakeoverPrompt = ({ lead }) => (
   <div data-testid="takeover-prompt" className="mt-4 rounded-xl border border-[#F5C7A6] bg-wt-soft p-3.5">
@@ -66,6 +85,7 @@ export const LeadDrawer = ({ lead, now, onChanged }) => {
       {lead.status === "walkthru_initiated" && <OnCallCard lead={lead} now={now} />}
       <Journey lead={lead} />
       {lead.escalated && <TakeoverPrompt lead={lead} />}
+      {lead.quote && <QuoteLines quote={lead.quote} />}
       <div className={`mt-5 grid gap-3 ${lead.status === "walkthru_initiated" ? "grid-cols-2" : "grid-cols-1"}`}>
         {lead.status === "walkthru_initiated" && <button data-testid="take-over-btn" onClick={() => post("take-over", "You're on it. Call the homeowner now.")}
           className="min-h-[44px] rounded-lg bg-wt-accent px-3 text-[15px] font-bold text-white transition-colors hover:bg-wt-accentDark">

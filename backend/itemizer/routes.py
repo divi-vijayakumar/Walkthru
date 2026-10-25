@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from auth.routes import require_user
 from core.db import db
 from core import flow
-from itemizer import engine
+from itemizer import engine, camera
 from itemizer.kb import seed_kb
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
@@ -45,7 +45,9 @@ def kb_problem(kind, doc, tasks, facts):
         if doc.get("add") not in tasks or not all(isinstance(doc.get(k), list) for k in ("has", "lacks")) \
                 or not all(isinstance(doc.get(k), dict) for k in ("facts", "lt")):
             return "A rule needs add (a task id), has, lacks, facts and lt"
-        if any(k not in facts for k in list(doc["facts"]) + list(doc["lt"])) or any(t not in tasks for t in doc["has"] + doc["lacks"]):
+        if not isinstance(doc.get("not", {}), dict):
+            return "A rule's not must map facts to lists"
+        if any(k not in facts for k in list(doc["facts"]) + list(doc["lt"]) + list(doc.get("not", {}))) or any(t not in tasks for t in doc["has"] + doc["lacks"]):
             return "Rule facts and tasks must already exist"
     elif doc.get("kind") not in ("driver", "measure_method") or not isinstance(doc.get("name"), str):
         return "Kind must be rule, driver or measure_method, with a name"
@@ -66,6 +68,8 @@ class GoalIn(BaseModel):
     frame_url: Optional[str] = None
     t_ms: Optional[int] = None
     goal_id: Optional[str] = None
+    box: Optional[list] = None
+    label: Optional[str] = None
 
 
 @router.get("/kb")
@@ -106,7 +110,9 @@ async def session(lead_id: str):
 
 @router.post("/itemizer/{lead_id}/turn")
 async def dev_turn(lead_id: str, body: TurnIn):
-    out, priced = await engine.turn(await flow.get_lead(lead_id), body.said, body.answers, body.camera_on)
+    lead = await flow.get_lead(lead_id)
+    out, priced = await engine.turn(lead, body.said, body.answers, body.camera_on)
+    camera.after_turn(lead)
     return {**out, "lines": priced["lines"] if priced else []}
 
 

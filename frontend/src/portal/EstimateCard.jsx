@@ -1,4 +1,5 @@
 import { money, range } from "@/shared/format";
+import { SeenFrame } from "@/shared/SeenFrame";
 
 export const EstimateCard = ({ quote, contractor }) => (
   <div data-testid="live-estimate-card" className="rounded-2xl bg-white p-5 text-wt-ink">
@@ -23,7 +24,7 @@ export const EstimateCard = ({ quote, contractor }) => (
               className={`flex items-center justify-between gap-3 border-b border-wt-line px-2 py-2.5 text-[15px] last:border-0 ${i.is_new ? "-mx-0 rounded-lg bg-wt-soft/70" : ""}`}>
               <span className="flex items-center gap-2">
                 {i.label}
-                {i.is_new && <span className="rounded bg-wt-soft px-1.5 text-[11px] font-bold text-wt-accentDark">NEW</span>}
+                <SeenFrame item={i} />                {i.is_new && <span className="rounded bg-wt-soft px-1.5 text-[11px] font-bold text-wt-accentDark">NEW</span>}
               </span>
               <span className="font-bold tabular">{i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
             </li>

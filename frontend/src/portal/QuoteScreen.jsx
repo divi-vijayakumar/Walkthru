@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Mic } from "lucide-react";
 import { money, range } from "@/shared/format";
+import { SeenFrame } from "@/shared/SeenFrame";
 import { PortalHeader, PortalShell, PrimaryButton, Row, Steps } from "@/portal/PortalShell";
 
 export const LineItems = ({ quote }) => (
   <ul className="mt-3">
     {quote.line_items.map((i) => (
-      <li key={i.key} className="flex justify-between gap-3 border-t border-wt-line py-2.5 text-[15px]">
-        <span>{i.label}</span>
+      <li key={i.key} className="flex items-center justify-between gap-3 border-t border-wt-line py-2.5 text-[15px]">
+        <span className="flex items-center gap-2">{i.label}<SeenFrame item={i} /></span>
         <span className="font-bold tabular">{i.amount < 0 ? `-${money(-i.amount)}` : money(i.amount)}</span>
       </li>
     ))}

@@ -62,7 +62,7 @@ export const CallScreen = ({ data, token, adapter, onEnded }) => {
           </div>
           <span data-testid="call-timer" className="rounded-full bg-wt-panel px-3 py-1.5 text-sm font-semibold text-white tabular">{clock(secs)}</span>
         </div>
-        <CameraPanel camera={camera} onToggle={toggleCamera} chips={camera.chips.length ? camera.chips : chips} />
+        <CameraPanel camera={camera} onToggle={toggleCamera} chips={chips} />
         <AgentRow caption={caption} agent={data.contractor.agent_name} />
         <EstimateCard quote={quote} contractor={data.contractor.name} />
         <div className="mt-auto flex justify-center gap-10 pt-4">

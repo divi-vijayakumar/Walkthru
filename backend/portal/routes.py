@@ -7,7 +7,6 @@ from core.quotes import latest_quote
 from core import flow
 from vapi.routes import read_message, run_tool_calls, parse_transcript
 
-MAX_FRAMES_PER_SESSION = 300
 router = APIRouter(prefix="/api/portal")
 
 
@@ -18,10 +17,6 @@ class Caption(BaseModel):
 
 class Camera(BaseModel):
     on: bool
-
-
-class Frame(BaseModel):
-    image: str = Field(max_length=600_000)
 
 
 class TranscriptLine(BaseModel):
@@ -79,21 +74,6 @@ async def call_camera(token: str, body: Camera):
     lead = await flow.lead_by_token(token)
     await db.call_sessions.update_one({"lead_id": lead["id"], "ended_at": None}, {"$set": {"camera_on": body.on}})
     return {"camera_on": body.on}
-
-
-@router.post("/{token}/frames")
-async def frames(token: str, body: Frame):
-    lead = await flow.lead_by_token(token)
-    if not body.image.startswith("data:image/jpeg;base64,"):
-        raise HTTPException(422, "Frames must be JPEG data URLs")
-    session = await flow.active_session(lead["id"])
-    if not session:
-        raise HTTPException(400, "No call in progress")
-    if await db.frames.count_documents({"session_id": session["id"]}) >= MAX_FRAMES_PER_SESSION:
-        raise HTTPException(429, "Frame limit reached for this call")
-    await db.frames.insert_one({"lead_id": lead["id"], "session_id": session["id"] if session else None,
-                                "image": body.image, "at": iso()})
-    return {"stored": True, "chips": (session or {}).get("chips", [])}
 
 
 @router.post("/{token}/agent/tools")
