@@ -1,5 +1,6 @@
 import { House, LogOut } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/dashboard/Auth";
 
 const NAV = ["Leads", "Sessions", "Quotes", "Payments", "Rate card and settings"];
@@ -13,17 +14,24 @@ export const Logo = ({ dark = true }) => (
   </div>
 );
 
-const NavItem = ({ label, active }) => (
+const NavItem = ({ label, active }) => {
+  const navigate = useNavigate();
+  const go = () => {
+    if (label.startsWith("Rate")) return navigate("/settings");
+    if (!active) toast(`${label} is coming next`, { description: "This demo focuses on the Leads view." });
+  };
+  return (
   <button
     data-testid={`sidebar-nav-${label.split(" ")[0].toLowerCase()}`}
-    onClick={() => !active && toast(`${label} is coming next`, { description: "This demo focuses on the Leads view." })}
+    onClick={go}
     className={`min-h-[44px] shrink-0 rounded-lg px-3 text-left text-[15px] transition-colors duration-150 ${
       active ? "bg-white/10 font-semibold text-white" : "text-white/75 hover:bg-white/5 hover:text-white"
     }`}
   >
     {label}
   </button>
-);
+  );
+};
 
 const UserBar = () => {
   const auth = useAuth();

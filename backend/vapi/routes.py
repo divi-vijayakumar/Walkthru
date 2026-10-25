@@ -9,7 +9,8 @@ from core.db import db, iso, get_contractor
 from core.status import touch
 from core.quotes import latest_quote, save_quote
 from core import flow
-from pricing.engine import new_state, adjust_state, price, margin_pct, drivers
+from pricing.engine import new_state, adjust_state, price, margin_pct, drivers, margin_discount_cap
+from itemizer.engine import turn as itemizer_turn
 
 router = APIRouter(prefix="/api/vapi")
 logger = logging.getLogger("vapi")
@@ -48,7 +49,57 @@ async def tool_estimate(lead, args, mode):
     return say if st is None else await persist(lead, st, say)
 
 
+async def save_itemized(lead, priced):
+    q = await latest_quote(lead["id"])
+    lines = [{k: v for k, v in line.items() if k != "facts"} for line in priced["lines"]]
+    if q and q["total"] == priced["total"] and [i["label"] for i in q["line_items"]] == [i["label"] for i in lines]:
+        return q
+    status = "live" if lead["status"] == "walkthru_initiated" else "sent"
+    return await save_quote(lead, lines, priced["total"], status, {
+        "low": priced["low"], "high": priced["high"], "drivers": priced["drivers"], "assumptions": priced["assumptions"],
+        "range_pct": priced["range_pct"], "source": "itemizer"})
+
+
+async def tool_update_scope(lead, args, mode):
+    if mode == "pending":
+        return {"status": "pending", "say": "Pricing is not available right now."}
+    out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, bool(args.get("camera_on")))
+    if priced:
+        out["version"] = (await save_itemized(lead, priced))["version"]
+    return out
+
+
 async def tool_adjust(lead, args, mode):
+    if await db.itemizer_sessions.find_one({"lead_id": lead["id"]}):
+        return await itemizer_adjust(lead, args, mode)
+    return await legacy_adjust(lead, args, mode)
+
+
+async def itemizer_adjust(lead, args, mode):
+    if mode == "pending":
+        return {"status": "pending", "say": "Pricing is not available right now."}
+    kind, answers = args.get("change_type"), {}
+    contractor = await get_contractor()
+    if kind == "discount_request":
+        allowed = (3 if (args.get("flexible_timeline_weeks") or 0) >= 4 else 0) + (3 if args.get("can_sign_within_7_days") else 0)
+        allowed = min(allowed, contractor["max_discount_pct"], margin_discount_cap(contractor["min_margin_pct"]))
+        s = await db.itemizer_sessions.find_one({"lead_id": lead["id"]})
+        if allowed <= s["levers"].get("disc", 0):
+            return {"status": "limit_reached", "say": "That is the best available right now.", "max_discount_percent": contractor["max_discount_pct"]}
+        await db.itemizer_sessions.update_one({"lead_id": lead["id"]}, {"$set": {"levers.disc": allowed}})
+        say = f"Applied a {allowed} percent discount."
+    elif kind == "timeline_change":
+        answers, say = {"timeline": f"{args.get('timeline_weeks', 8)} weeks"}, "Timeline updated."
+    else:
+        return {"status": "needs_human", "say": "Describe scope changes with update_scope."}
+    out, priced = await itemizer_turn(lead, "", answers, False)
+    if not priced:
+        return {**out, "say": say}
+    q = await save_itemized(lead, priced)
+    return {**out, "say": say, "version": q["version"]}
+
+
+async def legacy_adjust(lead, args, mode):
     if mode == "pending":
         return {"status": "pending", "say": "Pricing is not available right now."}
     doc = await db.pricing_states.find_one({"lead_id": lead["id"]})
@@ -71,7 +122,7 @@ async def tool_followup(lead, args, mode):
     return {"status": "ok", "say": "Follow-up queued."}
 
 
-TOOLS = {"get_quote_estimate": tool_estimate, "request_adjustment": tool_adjust, "queue_quote_followup": tool_followup}
+TOOLS = {"update_scope": tool_update_scope, "request_adjustment": tool_adjust, "queue_quote_followup": tool_followup}
 
 
 def parse_args(raw):

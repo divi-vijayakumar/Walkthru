@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster } from "@/components/ui/sonner";
 import DashboardPage from "@/dashboard/DashboardPage";
 import DevPage from "@/dashboard/DevPage";
+import SettingsPage from "@/dashboard/SettingsPage";
 import PortalPage from "@/portal/PortalPage";
 import { AuthCallback, RequireAuth } from "@/dashboard/Auth";
 
@@ -16,6 +17,7 @@ function AppRouter() {
       <Routes>
         <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />
         <Route path="/dev" element={<RequireAuth><DevPage /></RequireAuth>} />
+        <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/w/:token" element={<PortalPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

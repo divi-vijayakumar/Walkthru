@@ -77,9 +77,33 @@ export function createMockAdapter({ token, data, mode = "first", chat = false })
     ends.emit();
   };
 
+  const scopeLoop = async (scope) => {
+    let args = { said: ctx.lastUser || scope.said, answers: {}, camera_on: false };
+    for (let i = 0; i < 16 && !stopped; i += 1) {
+      const r = await callTool("update_scope", args);
+      if (stopped) return true;
+      if (!["ok", "needs_info"].includes(r.status)) {
+        if (r.status === "needs_human" && !ctx.quote) await callTool("queue_quote_followup", { reason: "needs_human", summary: ctx.user.join(" ") });
+        for (const line of failureLines(c, r, !!ctx.quote)) await say(line);
+        return false;
+      }
+      for (const ins of r.insights || []) await say(ins);
+      if (r.status === "ok") { ctx.last = r; ctx.quote = r; return true; }
+      await say(r.next_text);
+      const [text, value] = scope.replies[r.fact] || ["I'm not sure.", "unknown"];
+      await userTurn(text);
+      args = { said: "", answers: { [r.fact]: chat ? ctx.lastUser : value }, camera_on: false };
+    }
+    return !!ctx.last;
+  };
+
   const run = async () => {
     for (const step of buildScript(c, mode)) {
       if (stopped) return;
+      if (step.scope) {
+        if (!(await scopeLoop(step.scope))) break;
+        continue;
+      }
       if (step.tool) {
         const r = await callTool(step.tool, step.args(ctx));
         if (stopped) return;

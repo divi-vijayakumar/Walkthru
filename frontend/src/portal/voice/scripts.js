@@ -12,19 +12,34 @@ const bathArgs = (ctx, changes = []) => ({
   timeline: ctx.user[2] || "",
 });
 
+const REPLIES = {
+  replacing_vanity: ["A new floating one, a bit wider.", "new"],
+  new_vanity_mount: ["Floating on the wall.", "floating"],
+  new_vanity_sinks: ["Just one sink.", "1"],
+  sinks: ["It's a single sink.", "1"],
+  vanity_mount: ["It sits right on the floor.", "floor"],
+  tub_type: ["It's tucked between three walls.", "alcove"],
+  cast_iron: ["I don't think it's metal.", "no"],
+  shower_size: ["About the same size as the tub.", "standard"],
+  shower_glass: ["A glass door, please.", "door"],
+  shower_niche: ["Yes, a niche would be great.", "yes"],
+  curbless: ["No, a small lip is fine.", "no"],
+  finish_level: ["Standard is good.", "standard"],
+  water_damage: ["No leaks that we know of.", "no"],
+  timeline: ["In about two months.", "in two months"],
+  grab_bars: ["Two, please.", "2"],
+  bench: ["No bench.", "no"],
+  stove_fuel_now: ["It's gas right now.", "gas"],
+  stove_fuel_new: ["Keep it gas.", "gas"],
+  cabinet_work: ["New cabinets.", "replace"],
+  counter_material_new: ["Quartz, please.", "quartz"],
+  undermount_sink: ["Yes, under the counter.", "yes"],
+};
+
 const firstBath = (c) => [
   { role: "assistant", text: `Hi ${c.first}, I'm ${c.agent}, the AI estimator for ${c.contractor}. Tell me a bit about the ${c.ask} you have in mind.` },
-  { role: "user", text: "It's our main bathroom, about medium sized. There's an old alcove tub, a vinyl floor and a single vanity." },
-  { role: "assistant", text: "Thanks. What finish level feels right: a refresh, standard, or premium?" },
-  { role: "user", text: "Standard is good. Nothing too fancy." },
-  { role: "assistant", text: "Any timeline in mind, or known issues like leaks or soft spots in the floor?" },
-  { role: "user", text: "Everything seems solid. We'd like to start in about two months." },
-  { role: "assistant", text: (ctx) => { const a = bathArgs(ctx); return `Great. Let me price a ${a.finish_level} package for a ${a.room_size} bath.`; } },
-  { tool: "get_quote_estimate", args: (ctx) => bathArgs(ctx) },
-  { role: "assistant", text: (ctx) => `Your estimate is ${rangeOf(ctx.last)}. Is there anything you'd like to change?` },
-  { role: "user", text: "Actually, a walk-in shower instead of the tub, and I'd love a double vanity if it fits." },
-  { role: "assistant", text: "Got it, a walk-in shower with the double vanity. Let me reprice that for you." },
-  { tool: "get_quote_estimate", args: (ctx) => bathArgs(ctx, [ctx.lastUser]) },
+  { role: "user", text: "I want this sink gone, and I'd love a walk-in shower instead of the tub." },
+  { scope: { replies: REPLIES } },
   { role: "assistant", text: (ctx) => `That comes to ${rangeOf(ctx.last)}. ${c.contractor} confirms the final price after a quick site check. Anything else?` },
   { role: "user", text: "No, that sounds great." },
   { role: "assistant", text: `Perfect. I'll send your quote now. Thanks, ${c.first}!` },
@@ -32,16 +47,15 @@ const firstBath = (c) => [
 
 const firstOther = (c) => [
   { role: "assistant", text: `Hi ${c.first}, I'm ${c.agent}, the AI estimator for ${c.contractor}. Tell me about the ${c.ask} you have in mind.` },
-  { role: "user", text: "We'd like to update the whole space with mid-range finishes and fix a few worn spots." },
-  { role: "assistant", text: "Thanks, that's really helpful. Let me check pricing for that." },
-  { tool: "get_quote_estimate", args: (ctx) => ({ project_type: slug(c.ask), requested_changes: [ctx.lastUser] }) },
+  { role: "user", text: "We'd like new cabinets and countertops, and the stove redone." },
+  { scope: { replies: REPLIES } },
   { role: "assistant", text: (ctx) => `Your estimate is ${rangeOf(ctx.last)}. Thanks, ${c.first}!` },
 ];
 
 const changeCall = (c) => [
   { role: "assistant", text: (ctx) => `Welcome back, ${c.first}. Your current estimate is ${rangeOf(ctx.quote)}. What would you like to change?` },
-  { role: "user", text: "Could we do vinyl plank flooring instead of tile to save a bit?" },
-  { tool: "request_adjustment", args: (ctx) => ({ change_type: "scope_change", description: ctx.lastUser }) },
+  { role: "user", text: "Could we also add grab bars?" },
+  { scope: { replies: REPLIES } },
   { role: "assistant", text: (ctx) => `Done. Your estimate is now ${rangeOf(ctx.last)}. Anything else?` },
   { role: "user", text: "If we can sign this week and stay flexible on the start date, is there a discount?" },
   {
