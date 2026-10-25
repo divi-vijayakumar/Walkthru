@@ -85,8 +85,8 @@ async def start_call(lead):
 
 async def link_vapi_call(lead_id: str, vapi_call_id: str) -> bool:
     """Tie the open session to Vapi's call id once, so the end-of-call report lands on it."""
-    if await db.call_sessions.find_one({"vapi_call_id": vapi_call_id}, {"_id": 1}):
-        return True
+    if await db.call_sessions.find_one({"vapi_call_id": vapi_call_id}, {"_id": 0, "lead_id": 1}):
+        return bool(await db.call_sessions.find_one({"vapi_call_id": vapi_call_id, "lead_id": lead_id}, {"_id": 1}))
     s = await db.call_sessions.find_one({"lead_id": lead_id, "ended_at": None, "vapi_call_id": None},
                                         {"_id": 0, "id": 1}, sort=[("started_at", -1)])
     if not s:

@@ -102,7 +102,7 @@ async def insert_lead(row):
         live = "...a walk-in shower instead of the tub, and I'd love a double vanity if it fits."
         await db.call_sessions.insert_one({
             "id": f"session-{lead_id}", "lead_id": lead_id, "started_at": history[2]["at"],
-            "ended_at": iso(datetime.fromisoformat(history[2]["at"]) + timedelta(minutes=6)), "seeded": True,
+            "ended_at": iso(min(datetime.fromisoformat(history[2]["at"]) + timedelta(minutes=6), now())), "seeded": True,
             "transcript": transcript[:1] + [{"role": "user", "text": live, "at": ago(20)}],
             "live_caption": live, "live_role": "user", "camera_on": False, "chips": []})
     elif idx >= 3:
@@ -113,11 +113,15 @@ async def insert_lead(row):
 
 
 async def reset_seed():
+    """Rebuild the sample leads only; real leads and their data are never touched."""
+    sample = {"$regex": "^lead-"}
+    await db.leads.delete_many({"id": sample})
     for c in COLLECTIONS:
-        await db[c].delete_many({})
-    await db.contractors.insert_one({"id": CONTRACTOR_ID, "name": "Apex Remodeling", "agent_name": "Alex",
-                                     "phone": "(408) 555-0100", "agent_enabled": True,
-                                     "min_margin_pct": 18, "max_discount_pct": 6})
+        if c not in ("contractors", "leads"):
+            await db[c].delete_many({"lead_id": sample})
+    await db.contractors.update_one({"id": CONTRACTOR_ID}, {"$setOnInsert": {
+        "id": CONTRACTOR_ID, "name": "Apex Remodeling", "agent_name": "Alex", "phone": "(408) 555-0100",
+        "agent_enabled": True, "min_margin_pct": 18, "max_discount_pct": 6}}, upsert=True)
     for row in LEADS:
         await insert_lead(row)
     await db.meta.update_one({"_id": "seed"}, {"$set": {"version": SEED_VERSION, "at": iso()}}, upsert=True)

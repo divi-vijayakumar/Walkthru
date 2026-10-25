@@ -1,0 +1,45 @@
+{
+  "summary": "Vapi call-id linking tested via new pytest test_vapi_call_link.py: 10/10 pass (portal /call/link set + idempotent + never overwrites + linked:false with no open session/after end, 422/404 validation; /vapi/tools with call.id+lead_token links, wrong secret does not link; webhook status-update links without ending call; end-of-call-report matches older session by vapi_call_id while a newer open session exists, unknown id falls back to latest session w/o vapi_call_id, and when all are linked nothing is overwritten; seeded sessions all ended with 5-11 min durations). Regression test_round1_calls + test_tool_call_gating + test_call_fixes: 36/37 pass. CRITICAL INCIDENT: test_tool_call_gating.py (which I was asked to rerun) calls POST /api/dev/reset in its fixture -> reset_seed() delete_many({}) on all collections, so the REAL leads Dhivya Vijayakumar and Sathish Rajasekar (and their sessions/sms_log/etc) were wiped. No oplog/backup in local Mongo; not recoverable by me. Frontend (Playwright, Mongo session cookie): week line counts + all 5 filters filter/clear; real (TEST_) leads sorted before samples; Maya row no longer shows On call now/Watch/Building (shows Open); take-over-btn only on live lead; visit-section row renders; drawer call-card with recording+transcript; Sessions page rows with realistic durations + detail panel (audio, summary, transcript, findings empty state).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "tests/test_tool_call_gating.py (+ test_itemizer*, test_security_fixes, test_stripe_deposit, test_auth_google, test_walkthru_v2_api) -> POST /api/dev/reset", "issue": "Fixtures call /api/dev/reset which runs reset_seed(): delete_many({}) on every collection incl. leads. Running the requested regression deleted real leads Dhivya Vijayakumar + Sathish Rajasekar and all their data. db.meta.simulate_lead still holds Dhivya template (name, phone (646) 238-0338, thumbtack, Bathroom remodel); Sathish's phone from logs: +12156877004. Main agent must restore them (ideally without re-sending real WhatsApp) and make reset_seed only delete sample data (id ^lead- / seeded) or remove /dev/reset from tests.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "tests/test_tool_call_gating.py::test_maya_in_call_tools_work", "issue": "Fails: KeyError 'low' - update_scope result for Maya no longer has low/high (test likely stale vs current tool output shape, or Maya's seeded state changed). Verify and update test."},
+      {"endpoint": "POST /api/portal/{token}/call/link", "issue": "link_vapi_call returns {linked:true} if the vapi_call_id exists on ANY session, even another lead's. Nothing is overwritten, but response is misleading; scope the existence check to lead_id."},
+      {"endpoint": "vapi/routes.py resolve_lead (status-update/tools/report)", "issue": "Without lead_token in variableValues it falls back to the most recent real walkthru_initiated lead, so a status-update/tool call could link a call id onto another homeowner's open session. Consider skipping linking when lead was resolved via fallback."},
+      {"endpoint": "core/seed.py Maya session", "issue": "ended_at = history[2].at + 6 min, but history[2] is ~4 min ago, so Maya's ended_at is ~2 min in the future right after seeding (observed started 13:33:41, ended 13:39:41, now 13:38:04). Base it on started_at earlier in the past."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LeadRow Maya Rios", "issue": "Status pill still 'Walkthru initiated' with live dot and Last activity reads just '4m ago' (no verb) although no call is live; seeded Maya status should be walkthru_completed or pill should not imply live.", "selector": "[data-testid='lead-row-lead-maya']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard visit row", "issues": ["Native datetime-local picker instead of shadcn Calendar"]},
+      {"screen": "Sessions page", "issues": ["Quote column blank when no quote; consider '—'"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_vapi_call_link.py", "/app/test_reports/pytest/vapi_link.xml", "/app/test_reports/pytest/regression_r1b.xml"],
+  "action_items": [
+    "URGENT: restore real leads Dhivya Vijayakumar and Sathish Rajasekar (wiped by /api/dev/reset in test_tool_call_gating fixture); make reset_seed preserve non-sample leads and stop tests calling /dev/reset",
+    "Fix/update test_maya_in_call_tools_work (KeyError 'low')",
+    "Scope link_vapi_call existence check to lead_id",
+    "Don't link call ids when resolve_lead used the no-token fallback",
+    "Seed Maya's session so ended_at is not in the future"
+  ],
+  "critical_code_review_comments": [
+    "vapiAdapter: call-start posts /call/start then link; start() also chains link after vapi.start resolves - covers both orderings; fine",
+    "save_report fallback picks latest session with vapi_call_id None regardless of ended state - correct per spec",
+    "reset_seed() wipes all collections including real leads - dangerous in shared env"
+  ],
+  "updated_files": ["/app/backend/tests/test_vapi_call_link.py"],
+  "success_rate": {"backend": "98% (10/10 new, 36/37 regression)", "frontend": "~95%"},
+  "test_credentials": "Mongo-created session for divi@velvee.ai via conftest make_session; VAPI_SERVER_SECRET from backend/.env",
+  "seed_data_creation": "TEST_LINK * and TEST_R1 UI* leads created and cleaned. /api/dev/reset was triggered by test_tool_call_gating.py (sample data reseeded; real leads lost).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest tests/test_vapi_call_link.py tests/test_round1_calls.py -n 0. DO NOT run test_tool_call_gating.py / test_itemizer*.py / test_security_fixes / test_stripe_deposit / test_auth_google / test_walkthru_v2_api unless /dev/reset is made safe - they wipe all leads. UI seed: python tests/ui_seed_round1.py seed|clean.",
+  "rca of the issue": "Real-lead loss: test_tool_call_gating.py fixture s() asserts POST /api/dev/reset -> dashboard/routes.reset -> core/seed.reset_seed() which does db[c].delete_many({}) for all COLLECTIONS then inserts sample LEADS. Mongo is standalone (no oplog), no backup."
+}

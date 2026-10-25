@@ -23,10 +23,13 @@ def summary(q, say, status="ok"):
             "deposit_amount": q["deposit_amount"]}
 
 
-async def resolve_lead(msg):
+def lead_token(msg):
     call = msg.get("call") or {}
-    values = (call.get("assistantOverrides") or {}).get("variableValues") or {}
-    token = values.get("lead_token")
+    return ((call.get("assistantOverrides") or {}).get("variableValues") or {}).get("lead_token")
+
+
+async def resolve_lead(msg):
+    token = lead_token(msg)
     if token:
         return await db.leads.find_one({"portal_token": token}, {"_id": 0})
     return await db.leads.find_one({"status": "walkthru_initiated", "id": {"$not": {"$regex": "^lead-"}}}, {"_id": 0}, sort=[("last_activity_at", -1)])
@@ -160,7 +163,7 @@ async def tools(request: Request):
     try:
         lead = await resolve_lead(msg)
         call_id = (msg.get("call") or {}).get("id")
-        if lead and call_id:
+        if lead and call_id and lead_token(msg):
             await flow.link_vapi_call(lead["id"], call_id)
     except Exception:
         lead = None
@@ -256,7 +259,7 @@ async def webhook(request: Request):
             lead = await resolve_lead(msg)
             if lead and not lead["id"].startswith("lead-"):
                 await save_report(lead, msg)
-        elif kind == "status-update" and call_id:
+        elif kind == "status-update" and call_id and lead_token(msg):
             lead = await resolve_lead(msg)
             if lead:
                 await flow.link_vapi_call(lead["id"], call_id)
