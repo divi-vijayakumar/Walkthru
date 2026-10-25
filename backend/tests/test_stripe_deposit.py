@@ -4,6 +4,8 @@ import pytest
 import requests
 from dotenv import load_dotenv
 
+pytestmark = pytest.mark.skip(reason="calls /api/dev/reset, which reseeds and wipes real leads")
+
 load_dotenv("/app/frontend/.env")
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"

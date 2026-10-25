@@ -4,9 +4,10 @@ from core.db import db
 C, S, A, M, X = "camera", "show", "ask", "measure", "assume"
 
 
-def F(scope, ladder, label, default, question="", show="", goal="", numeric=False):
-    return {"scope": scope, "ladder": ladder, "label": label, "default": default, "question": question,
-            "show": show, "goals": [goal] if goal else [], "numeric": numeric}
+def F(scope, ladder, label, default, question="", show="", goal="", numeric=False, step=None):
+    d = {"scope": scope, "ladder": ladder, "label": label, "default": default, "question": question,
+         "show": show, "goals": [goal] if goal else [], "numeric": numeric}
+    return {**d, "step": step} if step else d
 
 
 FACTS = {
@@ -26,9 +27,9 @@ FACTS = {
     "moving": F("item", [A, X], "moving it", "same", "Do you want it in the same spot, or moved somewhere else?"),
     "floor_type": F("room", [C, A, X], "current floor", "vinyl", "What's on the floor now: vinyl, tile, wood or carpet?", goal="What is the current floor: carpet, hardwood, tile, vinyl or laminate?"),
     "floor_area": F("room", [C, M, X], "floor area (sq ft)", 60, show="If it's easy, count the floor tiles along two walls, or walk the longest wall and count your steps.",
-                    goal="Count the floor tiles along two walls", numeric=True),
+                    goal="Count the floor tiles along two walls", numeric=True, step="square"),
     "wall_tile_height": F("item", [A, X], "wall tile height", "wainscot", "Should the wall tile go part way up, or all the way to the ceiling?"),
-    "wall_tile_area": F("item", [M, X], "wall tile area (sq ft)", 60, show="If it's easy, tell me how long the tiled walls are, using the door for scale.", numeric=True),
+    "wall_tile_area": F("item", [M, X], "wall tile area (sq ft)", 60, show="If it's easy, tell me how long the tiled walls are, using the door for scale.", numeric=True, step=4),
     "fan_exists": F("room", [C, A, X], "exhaust fan", "yes", "Is there an exhaust fan in there now?", goal="Is there an exhaust fan in the ceiling?"),
     "fan_vents_outside": F("room", [A, X], "fan vents outside", "yes", "Does the fan blow air outside?"),
     "new_lights": F("item", [A, X], "new lights", 1, "How many new lights would you like?", numeric=True),
@@ -40,10 +41,10 @@ FACTS = {
     "uppers_to_ceiling": F("item", [C, X], "uppers to the ceiling", "no", goal="Do the upper cabinets go all the way to the ceiling?"),
     "counter_material_now": F("item", [C, X], "current countertop", "laminate", goal="What is the countertop: laminate, tile, stone or quartz?"),
     "counter_material_new": F("item", [A, X], "new countertop", "quartz", "What countertop would you like: laminate, stone or quartz?"),
-    "counter_area": F("item", [M, X], "countertop area (sq ft)", 30, show="If it's easy, count your steps along the counters.", numeric=True),
+    "counter_area": F("item", [M, X], "countertop area (sq ft)", 30, show="If it's easy, count your steps along the counters.", numeric=True, step=2.125),
     "undermount_sink": F("item", [A, X], "undermount sink", "no", "Would you like the sink mounted under the counter?"),
     "backsplash_exists": F("item", [C, X], "existing backsplash", "yes", goal="Is there a backsplash on the wall behind the counter?"),
-    "backsplash_area": F("item", [M, X], "backsplash area (sq ft)", 25, show="If it's easy, count your steps along the counters.", numeric=True),
+    "backsplash_area": F("item", [M, X], "backsplash area (sq ft)", 25, show="If it's easy, count your steps along the counters.", numeric=True, step=1.5),
     "sink_bowls": F("item", [C, A, X], "sink bowls", "1", "Is it a single or double bowl sink?", goal="How many bowls does the kitchen sink have?"),
     "stove_fuel_now": F("item", [A, X], "stove fuel now", "electric", "Is your stove gas or electric?"),
     "stove_fuel_new": F("item", [A, X], "stove fuel wanted", "electric", "Would you like gas, electric or induction for the new one?"),
@@ -60,7 +61,7 @@ FACTS = {
     "floor_new": F("item", [A, X], "new floor", "vinyl", "What new floor would you like: vinyl plank, hardwood or carpet?"),
     "stairs": F("item", [C, A, X], "stairs", 0, "How many stairs are there, if any?", goal="Count the stairs", numeric=True),
     "paint_surfaces": F("item", [A, X], "paint surfaces", "walls", "Walls, ceilings, or both?"),
-    "wall_area": F("room", [M, X], "wall area (sq ft)", 400, show="If it's easy, walk along the longest wall and count your steps.", numeric=True),
+    "wall_area": F("room", [M, X], "wall area (sq ft)", 400, show="If it's easy, walk along the longest wall and count your steps.", numeric=True, step=32),
     "ceiling_height": F("room", [M, X], "ceiling height (ft)", 8, show="Is the ceiling about a door and a half high, or taller?", numeric=True),
     "dark_to_light": F("item", [C, A, X], "dark to light color", "no", "Are you going from a dark color to a light one?", goal="Are the walls a dark color?"),
     "wall_cracks": F("item", [C, X], "cracks or patches", "no", goal="Any cracks, holes or patches on the walls?"),

@@ -16,7 +16,10 @@ Part B portal (/w/{token}): welcome, call screen (camera off by default, frames 
 
 ## Key decisions
 - Quote made during a live call stays "live" (status walkthru_initiated); on call end -> walkthru_completed -> quote_generated + SMS #2.
-- get_quote_estimate re-run keeps version counter per lead; pricing state stored per lead (pricing_states).
+- Itemizer (backend/itemizer/, spec docs/itemizer-design.md) prices calls via Vapi tool update_scope (get_quote_estimate removed). KB in Mongo kb_tasks/kb_facts/kb_rules (rules incl. driver_* and measure_* docs), sessions in itemizer_sessions. LLM (Claude Opus 5.5) only maps words to task ids when no keyword matches; never prices. Range = 10% + 5% per assumed fact (max 25%). New quote version only when lines/total/range/assumptions change; camera goal results after pricing make a new version.
+- Percia (camera analysis) not built: camera goals simulated via POST /api/itemizer/{lead}/goal-result; with no result the engine moves down the ladder.
+- Vapi dashboard must be updated by owner with the update_scope tool (docs/vapi-update-scope-tool.md).
+- Old tests test_security_fixes.py and test_stripe_deposit.py are skipped because they call /api/dev/reset.
 - Margin floor: estimated cost = 75% of list price; discount capped by max_discount_pct and min_margin_pct.
 - Sign flow: "Sign contract" opens full contract (contract_sent), "Sign and continue" signs (pending_deposit) and texts deposit link.
 - Recall quote -> quotes recalled, contract voided, status walkthru_completed, quote_pending 15 min.
@@ -32,6 +35,9 @@ Part B portal (/w/{token}): welcome, call screen (camera off by default, frames 
 - 2026-10-24: Security audit fixes: /api/vapi/* require VAPI_SERVER_SECRET (X-Vapi-Secret/Bearer), mock agent uses token-scoped /api/portal/{token}/agent/tools|end; tool calls only during an active call; random portal tokens; CORS no credentials with wildcard; Origin check blocks cross-site writes on dashboard APIs; frame (300/call, 600k) and caption (400 lines) caps.
 
 - 2026-10-24: Twilio WhatsApp channel (env MESSAGE_CHANNEL=whatsapp, TWILIO_WHATSAPP_FROM sandbox number). Real lead added: Dhivya Vijayakumar (Thumbtack, Bathroom remodel, (646) 238-0338); WhatsApp invite delivered (Twilio status read). Do NOT run /api/dev/reset or bump SEED_VERSION without asking: it wipes real leads.
+- 2026-10-25: Itemizer built and tested (iterations 8-9 + 38/38 itemizer tests): all 6 acceptance gates pass; editable KB at /settings (Rate card and settings) with validation; confirm yes/no, step measuring, flooring de-dupe, water-damage assumption.
+- P0: Owner updates Vapi assistant tool to update_scope
+- P1: Percia camera analysis + media store (build step 2), camera insights into live call (step 3)
 - P1: Frame analysis to fill "What I'm seeing" chips (frames already stored)
 - P1: Sessions / Quotes / Payments / Rate card pages
 - P2: Real payments; contractor notifications on escalation

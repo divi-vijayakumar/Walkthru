@@ -26,13 +26,15 @@ def fact_key(name, scope, item_id, room):
     return f"{name}@{item_id if scope == 'item' else room if scope == 'room' else 'job'}"
 
 
-def steps(a, b, area):
+def steps(a, b, step):
     a *= 2.5
-    return (a * b * 2.5 if b else a * a if area else a), "steps"
+    if b:
+        return a * b * 2.5, "steps"
+    return (a * a if step == "square" else a * step if isinstance(step, (int, float)) else a), "steps"
 
 
-def measure(value, area=False):
-    """Returns (sq ft or ft or count, method) from a measurement answer. A step is about 2.5 ft."""
+def measure(value, step=None):
+    """Returns (sq ft or ft or count, method). A step is about 2.5 ft; step = how one step-count turns into the fact's unit."""
     if isinstance(value, (int, float)):
         return float(value), "known"
     if isinstance(value, dict):
@@ -40,14 +42,14 @@ def measure(value, area=False):
         if m == "tiles":
             return value["x"] * value["y"] * (value.get("tile_in", 12) / 12.0) ** 2, "tiles"
         if m == "steps":
-            return steps(value["a"], value.get("b"), area)
+            return steps(value["a"], value.get("b"), step)
         if m == "tape":
             return value["a"] * value.get("b", 1), "tape"
     t = str(value).lower()
     if "step" in t:
         nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", t)]
         if nums:
-            return steps(nums[0], nums[1] if len(nums) > 1 else None, area)
+            return steps(nums[0], nums[1] if len(nums) > 1 else None, step)
     tm = re.search(r"(\d+)\s*(?:tiles?\s*)?(?:by|x)\s*(\d+)(?:\s*tiles?)?(?:\s*(?:at|of)\s*(\d+)\s*(?:in|inch))?", t)
     if tm and ("tile" in t or tm[3]):
         return int(tm[1]) * int(tm[2]) * ((int(tm[3] or 12)) / 12.0) ** 2, "tiles"
@@ -60,6 +62,7 @@ def measure(value, area=False):
 class Itemizer:
     def __init__(self, session, kb):
         self.s, (self.tasks, self.kbf, self.rules) = session, kb
+        self.confirmed = set()
 
     # --- facts ---------------------------------------------------------------
     def facts_named(self, name):
@@ -91,6 +94,7 @@ class Itemizer:
     def advance(self, f, camera_on, why):
         f["attempts"].append({"channel": self.channel(f), "result": why, "at": iso()})
         f["idx"] += 1
+        f["skips"] = 0
         self.enter(f, camera_on)
 
     def resolve(self, f, value, basis, confidence=1.0, evidence=None):
@@ -157,11 +161,13 @@ class Itemizer:
     def apply_answers(self, answers, camera_on):
         for name, val in (answers or {}).items():
             for f in self.facts_named(name):
-                if f["state"] in ("resolved",) and f["basis"] in ("seen", "measured"):
+                if f["state"] in ("resolved",) and f["basis"] in ("seen", "measured") or f["fact_id"] in self.confirmed:
                     continue
                 if f.get("pending_confirm") is not None and isinstance(val, str):
                     v, seen = val.strip().lower().rstrip(".!"), f["pending_confirm"]
                     f["pending_confirm"] = None
+                    if v in YES | NO:
+                        self.confirmed.add(f["fact_id"])
                     if v in YES:
                         self.resolve(f, seen, "seen", 1.0, f["evidence"])
                         continue
@@ -173,7 +179,7 @@ class Itemizer:
                         self.advance(f, camera_on, "unknown")
                     continue
                 if self.kbf[name].get("numeric"):
-                    num, method = measure(val, "sq ft" in self.kbf[name]["label"])
+                    num, method = measure(val, self.kbf[name].get("step"))
                     if num is None:
                         continue
                     self.resolve(f, round(num, 1), "measured" if method in ("tiles", "steps", "tape") else "said", evidence={"utterance": str(val), "method": method})

@@ -1,0 +1,41 @@
+{
+  "summary": "Retested the iteration-8 fixes. All tests used TEST_ leads with the non-allowlisted number (408) 555-0199. /dev/reset was never called. The KB was reset afterwards, and all TEST_ data and test sessions were cleaned up. Dhivya is untouched (pending_deposit). test_itemizer.py passes 17/17, so all 6 acceptance gates pass. The new test_itemizer_fixes.py (21 tests, run with -n 0) gives 18 pass and 3 fail. Results by fix. FIX1: 'yes' passes. It resolves to floor with basis seen, Retile is priced and pending_confirm is cleared. 'no' FAILS (see the critical issue). FIX2: passes for 3 phrasings, Flooring is never added. FIX3: passes for '4 steps by 3 steps' = 75, '20 steps' = 2500 on floor_area, cabinet_length '20 steps' = 50, and '9 by 7 at 12 in' = 63. The new square-room rule gives absurd values for countertop area. FIX4: passes; 41 unique ids, driver_/measure_ prefixes, no duplicate-key warning on /settings. FIX5: passes for all requested bad docs (missing keys, price 'abc', empty price, 2 tiers, unknown fact, bad scope, bad ladder step, rule add that is not a task, bad kind). All return 422 with a plain string. Valid edits return 200, the missing id returns 404, and reset restores. Some bad price docs still get 200 and then 500 the Itemizer (minor). FIX6: passes. A goal-result after pricing returns version and saves an itemizer quote with the new total, no assumptions and no Retile. Repeating the same goal keeps the version, and the reverse goal gives +1. An assumption-only change with the same total gives a new version, and a repeat dedupes. A goal-result followed by update_scope keeps the same version. An unknown fact gives 404, a bad status 422, and an unknown lead 404. FIX7: passes; the fact is re-asked once, assumed after 2 unanswered turns, and 'not sure' advances right away. FIX8: passes; the allowance line is $1,800 and the assumption 'Water damage allowance until the site visit' is present. Frontend /settings: the tasks summary shows conditions ('bathroom · if sinks 1: 350 · if sinks 2: 550', remove_tub alcove/freestanding/drop-in, cabinets tiers 'per cabinet_length'). The Rules tab has 41 rows, water_damage and driver_water_damage are separate rows, and there is no React key warning. A bad price edit in the UI shows the 422 toast 'Each price needs a number amount or three tier numbers'. Regression: auth returns 401 for /dashboard and /kb, a foreign Origin gets 403, gating works, and tool calls with an unknown token or bad secret work as expected. The tool path checks in test_itemizer.py pass (update_scope, request_adjustment discount, queue_quote_followup, vapi secret). I did NOT run test_walkthru_v2_api.py, test_tool_call_gating.py or test_security_fixes.py: their fixtures still call POST /api/dev/reset (lines 17/19, 21/23, 23/25/110/128), which would wipe the real lead.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/itemizer/{id}/turn (confirm 'no')", "issue": "Answering {vanity_mount:'no'} to the confirm prompt does advance the ladder (attempt 'rejected'). Then turn() runs apply_answers a second time (the `for _ in range(2)` loop). By then pending_confirm is None, so the literal 'no' is stored as the fact value (state resolved, basis said, value 'no'). Alex never asks the show/ask question, and the session prices right away with vanity_mount='no'. Repro: sink gone (camera_on), goal ambiguous 0.5 'floor', turn G3 answers, turn {vanity_mount:'no'}. Result: status ok, fact value 'no'. Fix: consume confirm answers once, e.g. drop that key from answers after handling yes/no, or run apply_answers only once and loop only apply_rules.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "engine.measure / steps() for area facts", "issue": "The square-room assumption (a*a) applies to every 'sq ft' fact. But counter_area and backsplash_area ask 'count your steps along the counters', and wall_area asks you to walk the longest wall. So '10 steps' on counter_area gives 625 sq ft (about $47k of quartz). It should be the run length times the depth (~2 ft for counters, ~1.5 ft for backsplash) and perimeter times height for walls. Limit the square-room rule to floor_area, or add a per-fact step formula in the KB."},
+      {"endpoint": "PUT /api/kb/tasks/{id}", "issue": "kb_problem checks only amount/tiers. price [{amount:5, mult:'x'}] or [{amount:5, when:'x'}] returns 200, and the next turn returns HTTP 500 (TypeError / AttributeError in price()). qty set to an unknown fact name is accepted and silently prices the line at $0. amount True and negative amounts are accepted. Validate mult as a number, when as a dict of fact to list, and qty in facts. Rule docs also don't check that the facts/lt keys are known facts."},
+      {"endpoint": "turn() skips", "issue": "f['skips'] is never reset after advance(). If a fact's next ladder step is also a spoken step (asked), it advances after only 1 unanswered turn. With the current KB this can't happen, but it's latent."},
+      {"endpoint": "vapi resolve_lead", "issue": "Still falls back to the most recent walkthru_initiated lead when lead_token is missing (carried over from iteration 8)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/settings tasks", "issues": ["Long conditional summaries are truncated with an ellipsis and have no tooltip or wrap (new_vanity, walk_in_shower, floor_tile). The full conditions can only be seen in the JSON editor."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_itemizer.py", "/app/backend/tests/test_itemizer_fixes.py", "/app/test_reports/pytest/pytest_itemizer.xml", "/app/test_reports/pytest/pytest_itemizer_fixes.xml"],
+  "action_items": [
+    "Fix the confirm 'no' path: the second apply_answers pass stores 'no' as the fact value (test_confirm_no_moves_down_ladder)",
+    "Use a per-fact step-to-area conversion: counter/backsplash = run x depth, wall = perimeter x height; square only for floor_area (test_counter_area_steps_sane)",
+    "Extend KB validation: mult must be a number, when a dict of lists, qty a known fact; check rule facts/lt keys (test_kb_price_types)",
+    "Port test_walkthru_v2_api.py, test_tool_call_gating.py and test_security_fixes.py off /api/dev/reset so they can be run safely"
+  ],
+  "critical_code_review_comments": [
+    "turn() loops apply_answers twice with the same answers dict. Any answer handling that changes state on the first pass (confirm, unknown-advance) is re-applied on the second pass. Pass the answers only once.",
+    "Itemizer.value(name) with no item_id still returns the first matching fact, so rules on item-scoped facts are ambiguous when there are multiple items (carried over).",
+    "measure(): a bare number on an area fact is 'known' / basis said. That's fine, but '12 ft by 10 ft' is tagged 'tape' and so basis measured, even though it is just what the homeowner said."
+  ],
+  "updated_files": ["/app/backend/tests/test_itemizer_fixes.py"],
+  "success_rate": {"backend": "92% (35/38: test_itemizer 17/17, fixes 18/21)", "frontend": "100% of the requested /settings checks"},
+  "test_credentials": "Owner session created in Mongo via conftest.make_session('divi@velvee.ai'), then deleted",
+  "seed_data_creation": "Only temporary TEST_Fix9 / TEST_Itemizer / TEST_Crash leads; all were deleted with their related records. KB reset to seed (41 rules).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_itemizer.py tests/test_itemizer_fixes.py -n 0 (pytest.ini adds xdist; use -n 0 for test_itemizer_fixes because its tests share leads in order). Never run the three old suites until they stop calling /dev/reset. VOICE_MODE=vapi. To get a browser session, set cookie session_token from conftest.make_session.",
+  "rca of the issue": "Confirm 'no': engine.turn calls iz.apply_answers(answers) inside `for _ in range(2)`. Pass 1: pending_confirm is set, v='no', so advance(f) runs and pending_confirm becomes None. Pass 2: the fact is no longer seen, pending_confirm is None, and 'no' is not in UNKNOWN, so it falls through to resolve(f, 'no', 'said'). Mitigation: handle the answers once and repeat only apply_rules, or pop the handled keys."
+}

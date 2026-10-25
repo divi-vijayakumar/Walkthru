@@ -15,9 +15,14 @@ LADDER = {"camera", "show", "ask", "measure", "assume"}
 NUM = (int, float)
 
 
-def price_ok(p):
-    return isinstance(p, dict) and (isinstance(p.get("amount"), NUM) or (isinstance(p.get("tiers"), list) and len(p["tiers"]) == 3
-                                    and all(isinstance(v, NUM) for v in p["tiers"])))
+def price_ok(p, facts):
+    if not isinstance(p, dict):
+        return False
+    amount, tiers, when = p.get("amount"), p.get("tiers"), p.get("when", {})
+    num = lambda v: isinstance(v, NUM) and not isinstance(v, bool) and v >= 0
+    return (num(amount) or (isinstance(tiers, list) and len(tiers) == 3 and all(num(v) for v in tiers))) \
+        and num(p.get("mult", 1)) and p.get("qty", next(iter(facts), None)) in facts \
+        and isinstance(when, dict) and all(k in facts and isinstance(v, list) for k, v in when.items())
 
 
 def kb_problem(kind, doc, tasks, facts):
@@ -25,8 +30,8 @@ def kb_problem(kind, doc, tasks, facts):
     if kind == "tasks":
         if not isinstance(doc.get("label"), str) or not all(isinstance(doc.get(k), list) for k in ("facts", "price", "triggers", "tags")):
             return "A task needs label, facts, price, triggers and tags"
-        if not doc["price"] or not all(price_ok(p) for p in doc["price"]):
-            return "Each price needs a number amount or three tier numbers"
+        if not doc["price"] or not all(price_ok(p, facts) for p in doc["price"]):
+            return "Each price needs a number amount or three tier numbers; qty and when must use known facts"
         if any(f not in facts for f in doc["facts"]):
             return "Unknown fact in facts"
     elif kind == "facts":
@@ -40,6 +45,8 @@ def kb_problem(kind, doc, tasks, facts):
         if doc.get("add") not in tasks or not all(isinstance(doc.get(k), list) for k in ("has", "lacks")) \
                 or not all(isinstance(doc.get(k), dict) for k in ("facts", "lt")):
             return "A rule needs add (a task id), has, lacks, facts and lt"
+        if any(k not in facts for k in list(doc["facts"]) + list(doc["lt"])) or any(t not in tasks for t in doc["has"] + doc["lacks"]):
+            return "Rule facts and tasks must already exist"
     elif doc.get("kind") not in ("driver", "measure_method") or not isinstance(doc.get("name"), str):
         return "Kind must be rule, driver or measure_method, with a name"
     return None
