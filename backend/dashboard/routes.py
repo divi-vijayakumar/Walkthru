@@ -1,10 +1,10 @@
 import os
 import statistics
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from core.db import db, iso, get_contractor, CONTRACTOR_ID
+from core.db import db, iso, now, get_contractor, CONTRACTOR_ID
 from core.status import FLOW, ALL_STATUSES, set_status
 from core.quotes import latest_quote
 from core import flow
@@ -49,15 +49,23 @@ async def dashboard():
         quotes[q["lead_id"]] = q
     for lead in leads:
         lead["live"] = sessions.get(lead["id"]) if lead["status"] == "walkthru_initiated" else None
+        lead["sample"] = lead["id"].startswith("lead-")
+        last = await db.call_sessions.find_one({"lead_id": lead["id"], "ended_at": {"$ne": None}}, {"_id": 0, "id": 1}, sort=[("started_at", -1)])
+        lead["last_call_id"] = last["id"] if last else None
         q = quotes.get(lead["id"])
         lead["quote"] = {k: q.get(k) for k in ("version", "total", "low", "high", "status", "line_items")} if q else None
-    leads.sort(key=lambda lead: (0 if lead["status"] == "walkthru_initiated" else 1, ORDER.get(lead["status"], 99),
+    leads.sort(key=lambda lead: (lead["sample"], 0 if lead["live"] else 1, ORDER.get(lead["status"], 99),
                                  -ts(lead["last_activity_at"])))
-    gaps = [g for g in (time_to_quote(lead["status_history"]) for lead in leads) if g is not None]
+    since = iso(now() - timedelta(days=7))
+    moved = lambda lead, st: any(h["status"] == st and h["at"] >= since for h in lead["status_history"])  # noqa: E731
+    week = {k: [lead["id"] for lead in leads if moved(lead, st)] for k, st in (
+        ("invited", "invited"), ("completed", "walkthru_completed"), ("quotes", "quote_generated"), ("contracts", "pending_deposit"))}
+    week["new"] = [lead["id"] for lead in leads if (lead.get("created_at") or lead["status_history"][0]["at"]) >= since]
+    visits = [{k: lead.get(k) for k in ("id", "name", "phone", "visit_times", "visit_requested_at", "visit_scheduled_for")}
+              for lead in leads if lead.get("visit_requested")]
     return {
-        "contractor": contractor, "leads": leads, "server_time": iso(),
+        "contractor": contractor, "leads": leads, "server_time": iso(), "week": week, "visits": visits,
         "counts": {s: sum(1 for lead in leads if lead["status"] == s) for s in ALL_STATUSES},
-        "median_time_to_quote_s": statistics.median(gaps) if gaps else None,
     }
 
 

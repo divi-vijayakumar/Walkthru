@@ -186,5 +186,9 @@ async def recall_quote(lead):
 
 async def take_over(lead):
     await touch(lead["id"], {"escalated": True, "escalated_at": iso()})
+    contractor = await get_contractor()
+    await db.call_sessions.update_one({"lead_id": lead["id"], "ended_at": None}, {"$set": {"takeover": True, "taken_over": True}})
+    await send_sms({**lead, "phone": contractor["phone"], "id": lead["id"]},
+                   f"Take over: call {lead['name']} now at {lead['phone']}. They're expecting your call.", "takeover_alert")
     await db.call_sessions.update_one({"lead_id": lead["id"], "ended_at": None}, {"$push": {"transcript": {
         "role": "system", "text": "Contractor took over the call.", "at": iso()}}})

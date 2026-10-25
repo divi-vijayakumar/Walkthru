@@ -7,7 +7,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from fastapi import FastAPI  # noqa: E402
 from starlette.middleware.cors import CORSMiddleware  # noqa: E402
-from core.db import client  # noqa: E402
+from core.db import client, db, iso  # noqa: E402
 from core.seed import seed  # noqa: E402
 from dashboard.routes import router as dashboard_router  # noqa: E402
 from portal.routes import router as portal_router  # noqa: E402
@@ -20,6 +20,7 @@ from itemizer import camera as itemizer_camera  # noqa: E402
 from media.routes import router as media_router, dev_router as media_dev_router  # noqa: E402
 from media import store as media_store  # noqa: E402
 from percia.routes import router as percia_router  # noqa: E402
+from calls.routes import router as calls_router, public_router as calls_public_router  # noqa: E402
 from percia import worker as percia_worker  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -42,6 +43,8 @@ app.include_router(itemizer_camera.callback_router)
 app.include_router(media_router)
 app.include_router(media_dev_router)
 app.include_router(percia_router)
+app.include_router(calls_router)
+app.include_router(calls_public_router)
 
 origins = [o.strip() for o in os.environ["CORS_ORIGINS"].split(",") if o.strip()]
 app.add_middleware(
@@ -60,6 +63,7 @@ async def on_startup():
     await media_store.init()
     await percia_worker.init()
     itemizer_camera.init()
+    await db.call_sessions.update_many({"id": {"$regex": "^session-lead-"}, "ended_at": None}, {"$set": {"ended_at": iso(), "seeded": True}})
 
 
 @app.on_event("shutdown")

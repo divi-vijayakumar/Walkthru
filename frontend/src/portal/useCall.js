@@ -32,6 +32,7 @@ export const useLiveQuote = (token, initial, adapter) => {
         setQuote(r.data.quote);
         setChips(r.data.session?.chips || []);
         (r.data.insights || []).forEach((text) => adapter?.injectInsight?.(text));
+        if (r.data.session?.takeover) adapter?.takeOver?.();
       }).catch(() => {});
     }, 1500);
     return () => clearInterval(id);

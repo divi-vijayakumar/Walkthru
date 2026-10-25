@@ -2,6 +2,8 @@ import Vapi from "@vapi-ai/web";
 import { api } from "@/shared/api";
 import { rangeOf } from "@/portal/voice/scripts";
 
+export const TAKEOVER_LINE = "Let me connect you with our contractor. You'll get a call back right away.";
+
 const listeners = () => {
   const set = new Set();
   return { add: (cb) => { set.add(cb); return () => set.delete(cb); }, emit: (...a) => set.forEach((cb) => cb(...a)) };
@@ -13,6 +15,7 @@ export function createVapiAdapter({ token, data, mode = "first" }) {
   const ends = listeners();
   const vapi = new Vapi(data.voice.public_key);
   let ended = false;
+  let tookOver = false;
 
   const finish = async () => {
     if (ended) return;
@@ -51,6 +54,11 @@ export function createVapiAdapter({ token, data, mode = "first" }) {
       if (ended) return;
       vapi.send({ type: "add-message", message: { role: "system",
         content: `Camera update: ${text.replace(/\.$/, "")}. Mention it naturally at the next pause; don't interrupt the homeowner.` } });
+    },
+    takeOver() {
+      if (ended || tookOver) return;
+      tookOver = true;
+      vapi.say(TAKEOVER_LINE, true);
     },
     onCaption: captions.add,
     onEnd: ends.add,

@@ -11,6 +11,7 @@ import { OnCallCard } from "@/dashboard/OnCallCard";
 import { Journey } from "@/dashboard/Journey";
 import { TranscriptDialog } from "@/dashboard/TranscriptDialog";
 import { SeenFrame } from "@/shared/SeenFrame";
+import { CallCard } from "@/dashboard/CallDetail";
 import { money, range } from "@/shared/format";
 
 const QuoteLines = ({ quote }) => (
@@ -82,12 +83,12 @@ export const LeadDrawer = ({ lead, now, onChanged }) => {
     <aside data-testid="lead-drawer" className="h-fit rounded-2xl border border-wt-line bg-white p-5 xl:sticky xl:top-6">
       <h2 data-testid="drawer-name" className="font-display text-2xl font-bold text-wt-ink">{lead.name}</h2>
       <p className="text-sm text-wt-muted">{SOURCES[lead.source]} · {lead.ask}</p>
-      {lead.status === "walkthru_initiated" && <OnCallCard lead={lead} now={now} />}
+      {lead.live ? <OnCallCard lead={lead} now={now} /> : lead.last_call_id && <CallCard callId={lead.last_call_id} />}
       <Journey lead={lead} />
       {lead.escalated && <TakeoverPrompt lead={lead} />}
       {lead.quote && <QuoteLines quote={lead.quote} />}
-      <div className={`mt-5 grid gap-3 ${lead.status === "walkthru_initiated" ? "grid-cols-2" : "grid-cols-1"}`}>
-        {lead.status === "walkthru_initiated" && <button data-testid="take-over-btn" onClick={() => post("take-over", "You're on it. Call the homeowner now.")}
+      <div className={`mt-5 grid gap-3 ${lead.live ? "grid-cols-2" : "grid-cols-1"}`}>
+        {lead.live && <button data-testid="take-over-btn" onClick={() => post("take-over", "You're on it. Call the homeowner now.")}
           className="min-h-[44px] rounded-lg bg-wt-accent px-3 text-[15px] font-bold text-white transition-colors hover:bg-wt-accentDark">
           Take over call
         </button>}

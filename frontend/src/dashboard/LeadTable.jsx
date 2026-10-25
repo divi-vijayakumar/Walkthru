@@ -11,7 +11,7 @@ export const LeadTable = ({ leads, selectedId, flash, now, onSelect, onAction })
   const [ask, setAsk] = useState(ALL_FILTER);
   const asks = useMemo(() => [...new Set(leads.map((l) => l.ask))].sort(), [leads]);
   const rows = leads.filter(
-    (l) => (status === ALL_FILTER || l.status === status) && (source === ALL_FILTER || l.source === source) && (ask === ALL_FILTER || l.ask === ask),
+    (l) => (status === ALL_FILTER || l.status === status || (status === "visit_requested" && l.visit_requested)) && (source === ALL_FILTER || l.source === source) && (ask === ALL_FILTER || l.ask === ask),
   );
 
   return (
@@ -19,7 +19,7 @@ export const LeadTable = ({ leads, selectedId, flash, now, onSelect, onAction })
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 px-5 py-4">
         <h2 className="mr-auto text-[17px] font-bold text-wt-ink">All leads</h2>
         <FilterSelect id="status" label="Status" value={status} onChange={setStatus}
-          options={Object.entries(STATUS).map(([v, s]) => [v, s.label])} />
+          options={[...Object.entries(STATUS).map(([v, s]) => [v, s.label]), ["visit_requested", "Visit requested"]]} />
         <FilterSelect id="source" label="Source" value={source} onChange={setSource} options={Object.entries(SOURCES)} />
         <FilterSelect id="ask" label="Ask" value={ask} onChange={setAsk} options={asks.map((a) => [a, a])} />
       </div>

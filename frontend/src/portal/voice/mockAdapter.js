@@ -1,5 +1,6 @@
 import { api } from "@/shared/api";
 import { buildScript, failureLines } from "@/portal/voice/scripts";
+import { TAKEOVER_LINE } from "@/portal/voice/vapiAdapter";
 
 const speakMs = (text) => 1400 + text.length * 48;
 
@@ -143,6 +144,13 @@ export function createMockAdapter({ token, data, mode = "first", chat = false })
     stop: finish,
     setMuted(m) { stream?.getAudioTracks().forEach((t) => { t.enabled = !m; }); },
     injectInsight(text) { if (!stopped) camera.push(`Quick camera note: ${text.replace(/\.$/, "")}.`); },
+    takeOver() {
+      if (stopped) return;
+      stopped = true;
+      clearTimeout(timer);
+      emit("assistant", TAKEOVER_LINE);
+      setTimeout(() => { ended = false; finish(); }, 2500);
+    },
     sendText(text) { if (replyResolve && text.trim()) { const r = replyResolve; replyResolve = null; r(text.trim()); } },
     onCaption: captions.add,
     onEnd: ends.add,

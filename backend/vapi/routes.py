@@ -29,7 +29,7 @@ async def resolve_lead(msg):
     token = values.get("lead_token")
     if token:
         return await db.leads.find_one({"portal_token": token}, {"_id": 0})
-    return await db.leads.find_one({"status": "walkthru_initiated"}, {"_id": 0}, sort=[("last_activity_at", -1)])
+    return await db.leads.find_one({"status": "walkthru_initiated", "id": {"$not": {"$regex": "^lead-"}}}, {"_id": 0}, sort=[("last_activity_at", -1)])
 
 
 async def persist(lead, st, say):
@@ -111,8 +111,11 @@ async def legacy_adjust(lead, args, mode):
 
 
 async def tool_followup(lead, args, mode):
-    await db.followups.insert_one({"lead_id": lead["id"], "args": args, "at": iso()})
-    await touch(lead["id"], {"followup_queued": True})
+    visit = bool(args.get("site_visit_requested"))
+    times = str(args.get("preferred_visit_times") or "")[:200]
+    await db.followups.insert_one({"lead_id": lead["id"], "args": args, "site_visit_requested": visit, "preferred_visit_times": times, "at": iso()})
+    extra = {"visit_requested": True, "visit_times": times, "visit_requested_at": iso()} if visit else {}
+    await touch(lead["id"], {"followup_queued": True, **extra})
     return {"status": "ok", "say": "Follow-up queued."}
 
 
@@ -211,6 +214,28 @@ def parse_transcript(msg):
     return lines
 
 
+async def save_report(lead, msg):
+    """Keep Vapi's transcript, recording and summary on the call, even if the portal already ended it."""
+    from calls.routes import copy_recording
+    call_id = (msg.get("call") or {}).get("id")
+    s = call_id and await db.call_sessions.find_one({"vapi_call_id": call_id}, {"_id": 0, "id": 1, "ended_at": 1})
+    s = s or await db.call_sessions.find_one({"lead_id": lead["id"]}, {"_id": 0, "id": 1, "ended_at": 1}, sort=[("started_at", -1)])
+    if not s:
+        return
+    lines, art = parse_transcript(msg), msg.get("artifact") or {}
+    if not s.get("ended_at"):
+        await flow.end_call(lead, lines)
+    rec = art.get("recordingUrl") or (art.get("recording") or {}).get("url") or msg.get("recordingUrl")
+    upd = {"vapi_call_id": call_id, "summary": (msg.get("analysis") or {}).get("summary") or msg.get("summary"), "report_at": iso()}
+    if lines:
+        upd["transcript"] = lines
+    if rec:
+        upd["recording_url"] = rec
+    await db.call_sessions.update_one({"id": s["id"]}, {"$set": upd})
+    if rec:
+        asyncio.create_task(copy_recording(s["id"], rec))
+
+
 @router.post("/webhook")
 async def webhook(request: Request):
     if not vapi_authorized(request):
@@ -219,8 +244,8 @@ async def webhook(request: Request):
         msg = await read_message(request)
         if msg.get("type") == "end-of-call-report":
             lead = await resolve_lead(msg)
-            if lead:
-                await flow.end_call(lead, parse_transcript(msg))
+            if lead and not lead["id"].startswith("lead-"):
+                await save_report(lead, msg)
     except Exception as e:
         logger.exception("webhook failed: %s", e)
     return JSONResponse({"received": True}, status_code=200)

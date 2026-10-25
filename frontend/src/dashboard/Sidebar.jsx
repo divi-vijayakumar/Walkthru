@@ -14,10 +14,13 @@ export const Logo = ({ dark = true }) => (
   </div>
 );
 
+const activeLabel = () => ({ "/sessions": "Sessions", "/settings": "Rate card and settings" }[window.location.pathname] || "Leads");
+
 const NavItem = ({ label, active }) => {
   const navigate = useNavigate();
   const go = () => {
     if (label.startsWith("Rate")) return navigate("/settings");
+    if (label === "Sessions") return navigate("/sessions");
     if (!active) toast(`${label} is coming next`, { description: "This demo focuses on the Leads view." });
   };
   return (
@@ -53,7 +56,7 @@ export const Sidebar = ({ contractor }) => (
       <Logo />
     </div>
     <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:overflow-visible lg:px-4">
-      {NAV.map((label) => <NavItem key={label} label={label} active={label === "Leads"} />)}
+      {NAV.map((label) => <NavItem key={label} label={label} active={label === activeLabel()} />)}
     </nav>
     <div data-testid="sidebar-contractor-card" className="m-4 hidden rounded-xl bg-white/5 p-4 lg:block">
       <p className="text-sm font-bold text-white">{contractor?.name || "Apex Remodeling"}</p>

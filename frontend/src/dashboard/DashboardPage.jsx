@@ -6,7 +6,7 @@ import { useNow } from "@/shared/useNow";
 import { showSmsToast } from "@/shared/smsToast";
 import { Sidebar } from "@/dashboard/Sidebar";
 import { DashboardHeader } from "@/dashboard/DashboardHeader";
-import { FunnelStrip } from "@/dashboard/FunnelStrip";
+import { WeekLine, VisitSection } from "@/dashboard/WeekLine";
 import { LeadTable } from "@/dashboard/LeadTable";
 import { LeadDrawer } from "@/dashboard/LeadDrawer";
 
@@ -48,6 +48,7 @@ const useDashboard = () => {
 export default function DashboardPage() {
   const { data, flash, load } = useDashboard();
   const [selectedId, setSelectedId] = useState(null);
+  const [weekPick, setWeekPick] = useState(null);
   const [simulating, setSimulating] = useState(false);
   const drawerRef = useRef(null);
   const now = useNow(1000);
@@ -101,9 +102,11 @@ export default function DashboardPage() {
         {!data && <div className="mt-6 h-64 animate-pulse rounded-2xl bg-white" />}
         {data && (
           <>
-            <FunnelStrip counts={data.counts} median={data.median_time_to_quote_s} />
+            <WeekLine week={data.week} active={weekPick} onPick={setWeekPick} />
+            <VisitSection visits={data.visits} onDone={load} />
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <LeadTable leads={data.leads} selectedId={selected?.id} flash={flash} now={now} onSelect={select} onAction={onAction} />
+              <LeadTable leads={weekPick ? data.leads.filter((l) => data.week[weekPick].includes(l.id)) : data.leads}
+                selectedId={selected?.id} flash={flash} now={now} onSelect={select} onAction={onAction} />
               <div ref={drawerRef}>{selected && <LeadDrawer lead={selected} now={now} onChanged={load} />}</div>
             </div>
           </>

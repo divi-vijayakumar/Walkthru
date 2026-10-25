@@ -101,7 +101,7 @@ async def insert_lead(row):
     if status == "walkthru_initiated":
         live = "...a walk-in shower instead of the tub, and I'd love a double vanity if it fits."
         await db.call_sessions.insert_one({
-            "id": f"session-{lead_id}", "lead_id": lead_id, "started_at": history[2]["at"], "ended_at": None,
+            "id": f"session-{lead_id}", "lead_id": lead_id, "started_at": history[2]["at"], "ended_at": ago(20), "seeded": True,
             "transcript": transcript[:1] + [{"role": "user", "text": live, "at": ago(20)}],
             "live_caption": live, "live_role": "user", "camera_on": False, "chips": []})
     elif idx >= 3:
