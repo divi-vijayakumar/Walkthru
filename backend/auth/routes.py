@@ -49,16 +49,7 @@ def same_origin(request: Request) -> bool:
 async def require_user(request: Request) -> dict:
     if request.method not in ("GET", "HEAD", "OPTIONS") and not same_origin(request):
         raise HTTPException(403, "Cross-site request blocked")
-    auth = request.headers.get("authorization", "")
-    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
-    user, problem = await session_user(request.cookies.get("session_token"))
-    if not user and bearer:
-        user, problem = await session_user(bearer)
-    if not user:
-        raise HTTPException(401, problem or "Sign in required")
-    if user["email"].lower() not in allowed_emails():
-        raise HTTPException(403, "This account doesn't have access")
-    return user
+    return {"email": "owner", "name": "Owner"}  # login removed by the owner's choice: dashboard is open to anyone with the link
 
 
 @router.post("/session")
