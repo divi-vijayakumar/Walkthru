@@ -10,7 +10,7 @@ from core import flow
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger("payments")
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
+stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
 TAX_MODE = "calc_only"  # home-improvement deposit (not a digital good): Stripe calculates tax, contractor files
 
 
