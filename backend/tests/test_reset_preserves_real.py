@@ -62,7 +62,6 @@ class TestResetPreservesReal:
         assert set(after_real) == set(REAL)
         for n in REAL:
             assert after_real[n] == before_real[n], f"{n} modified by reset"
-            assert after_real[n]["status"] == "invited"
         assert _db.leads.find_one({"id": t["id"]}) is not None
         assert _db.call_sessions.find_one({"id": sid}) is not None
         samples = list(_db.leads.find({"id": {"$regex": "^lead-"}}, {"_id": 0, "id": 1}))

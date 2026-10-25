@@ -257,7 +257,7 @@ def test_dedupe_assumption_change_new_version(L):
             break
         a = tool(lead, "update_scope", {"said": "", "answers": {a["fact"]: ans.get(a["fact"], "not sure")}})
     print(a)
-    assert a["status"] == "ok" and "Assumed water damage: no (assumed, to confirm at the site visit)" in a["assumptions"], a
+    assert a["status"] == "ok" and "Water damage: no (assumed, to confirm at the site visit)" in a["assumptions"], a
     b = tool(lead, "update_scope", {"said": "", "answers": {"water_damage": "no"}})
     print(b)
     assert b["total"] == a["total"] and b["assumptions"] == [] and b["version"] == a["version"] + 1

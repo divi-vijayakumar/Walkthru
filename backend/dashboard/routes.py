@@ -62,7 +62,7 @@ async def dashboard():
         last = await db.call_sessions.find_one({"lead_id": lead["id"], "ended_at": {"$ne": None}}, {"_id": 0, "id": 1}, sort=[("started_at", -1)])
         lead["last_call_id"] = last["id"] if last else None
         q = quotes.get(lead["id"])
-        lead["quote"] = {k: q.get(k) for k in ("version", "total", "low", "high", "status", "line_items")} if q else None
+        lead["quote"] = {k: q.get(k) for k in ("version", "total", "status", "line_items")} if q else None
     leads.sort(key=lambda lead: (lead["sample"], 0 if lead["live"] else 1, ORDER.get(lead["status"], 99),
                                  -ts(lead["last_activity_at"])))
     since = iso(now() - timedelta(days=7))

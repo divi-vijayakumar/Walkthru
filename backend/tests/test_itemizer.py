@@ -173,7 +173,7 @@ def test_gate3_ask_when_camera_off(s, leads):
     print(r)
     # iteration 11 rule: vanity mount moves the price < $1,000 -> never asked; camera off -> default + assumption
     assert r["next_action"] == "price" and r["status"] == "ok" and ASK_Q not in r["next_text"]
-    assert "Assumed vanity mount: floor (assumed, to confirm at the site visit)" in r["assumptions"]
+    assert "Vanity mount: floor (assumed, to confirm at the site visit)" in r["assumptions"]
 
 
 def test_gate3_neither_assume(s, leads):
@@ -181,7 +181,7 @@ def test_gate3_neither_assume(s, leads):
     r1, r = gate3_neither(s, lid)
     print(r1, r)
     assert r["status"] == "ok"
-    assert r["assumptions"] == ["Assumed vanity mount: floor (assumed, to confirm at the site visit)"]
+    assert r["assumptions"] == ["Vanity mount: floor (assumed, to confirm at the site visit)"]
     sess = _db.itemizer_sessions.find_one({"lead_id": lid})
     assert sum(1 for f in sess["facts"] if f["state"] == "assumed") == 1
     # iteration 17: one exact number, no range

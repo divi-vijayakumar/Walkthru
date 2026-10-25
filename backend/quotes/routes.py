@@ -30,7 +30,7 @@ async def quotes():
         newest[q["lead_id"]] = max(newest.get(q["lead_id"], 0), q["version"])
     rows = [{"id": q["id"], "lead_id": q["lead_id"], "lead_name": leads[q["lead_id"]]["name"], "ask": leads[q["lead_id"]]["ask"],
              "lead_status": leads[q["lead_id"]]["status"], "sample": q["lead_id"].startswith("lead-"), "version": q["version"],
-             "status": q["status"], "total": q["total"], "low": q["low"], "high": q["high"], "deposit_amount": q["deposit_amount"],
+             "status": q["status"], "total": q["total"], "deposit_amount": q["deposit_amount"],
              "lines": len(q["line_items"]), "created_at": q["created_at"], "latest": q["version"] == newest[q["lead_id"]]}
             for q in docs]
     rows.sort(key=lambda r: r["sample"])

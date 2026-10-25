@@ -15,7 +15,9 @@ QUESTION_BUDGET = 5
 MIN_ASK_IMPACT, PRIORITY_IMPACT = 300, 1000
 YES = {"yes", "yeah", "yep", "right", "correct", "that's right", "true", "sure", "yup"}
 NO = {"no", "nope", "wrong", "not right", "incorrect"}
-PRICE_WORDS = re.compile(r"\b(quote|price|pricing|how much)\b|\bthat'?s (it|all)\b|\bnothing else\b|\bjust give me\b|\blet'?s conclude\b|\bwrap (it |this )?up\b", re.I)
+PRICE_WORDS = re.compile(r"\b(give|get|send|tell|show|want|need|have)\b(?: me| us)?(?: the| a| my| our| your)? (quote|price|estimate|total|number)\b"
+                         r"|\bwhat'?s the (quote|price|estimate|total|damage)\b|\bwhat (is|would be) the (quote|price|estimate|total)\b"
+                         r"|\bhow much (is|will|would|does|do|did) (it|this|that|all|everything)\b|\bhow much\s*(?:[?!.]|$)|\bthat'?s (it|all)\b|\bnothing else\b|\bjust give me\b|\blet'?s conclude\b|\bwrap (it |this )?up\b", re.I)
 PACKAGES = {"bathroom": "pkg_bathroom", "kitchen": "pkg_kitchen"}
 WORK_WORDS = re.compile(r"\b(replace|new|add|install|remove|swap|redo|change|update|upgrade|fix|repair|put in|move|get rid of|take out|rip out|"
                         r"tear out|knock down|open up|improve|better|nicer|build|refresh)\b", re.I)
@@ -222,7 +224,7 @@ class Itemizer:
         for o in sorted(opts, key=len, reverse=True):
             if re.search(rf"\b{re.escape(o.lower())}\b", t):
                 return o
-        return t
+        return None if opts else t
 
     # --- items and rules -----------------------------------------------------
     def live_items(self):
@@ -399,11 +401,14 @@ class Itemizer:
                     continue
                 if numeric:
                     num, method = measure(val, self.kbf[name].get("step"))
-                    if num is None:
+                    if num is None:  # couldn't read a number: assume it, never ask again
+                        self.assume(f)
                         continue
                     self.resolve(f, round(num, 1), "measured" if method in ("tiles", "steps", "tape") else "said", evidence={"utterance": str(val), "method": method})
+                elif (v := self.normalize(name, val)) is None:  # not one of the options: assume the default
+                    self.assume(f)
                 else:
-                    self.resolve(f, self.normalize(name, val), "said", evidence={"utterance": str(val)})
+                    self.resolve(f, v, "said", evidence={"utterance": str(val)})
 
     # --- which questions are worth asking -------------------------------------
     def fill_defaults(self):
@@ -546,9 +551,7 @@ class Itemizer:
         v = f"{num_text(f['value'])} {unit}".strip() if d.get("numeric") else f["value"]
         if f.get("from_camera"):
             return f"{noun[:1].upper() + noun[1:]}: about {v} from the camera"
-        if f.get("site_visit"):
-            return f"Assumed {d['label']}: {f['value']}"
-        return f"Assumed {d['label']}: {f['value']}"
+        return f"{d['label'][:1].upper() + d['label'][1:]}: {f['value']}"
 
     def tier_of(self, c, tier):
         f = next((x for x in self.facts_named(c["tier_fact"]) if x["state"] == "resolved"), None) if c.get("tier_fact") else None
@@ -601,7 +604,7 @@ class Itemizer:
         if self.has("water_damage_allowance"):
             notes.append("Water damage allowance until the site visit")
         notes += [f"{i['label']} (not in this total)" for i in self.live_items() if i.get("custom")]
-        return {"lines": lines, "total": int(total), "low": int(total), "high": int(total), "range_pct": 0,
+        return {"lines": lines, "total": int(total),
                 "assumptions": notes,
                 "drivers": [x["label"] for x in sorted([x for x in lines if x.get("amount") and x["key"].startswith("it")], key=lambda x: -x["amount"])][:3],
                 "deposit_percent": DEPOSIT_PCT,
@@ -859,9 +862,11 @@ async def turn(lead, said="", answers=None, camera_on=False, wants_price=False, 
 async def ensure_quote(lead, since=None):
     """Call-end backstop: no quote above $0 saved during the call -> price everything with defaults and save one."""
     q = await latest_quote(lead["id"])
-    if q and (q.get("total") or 0) > 0 and (not since or q["created_at"] >= since):
+    fresh = q and (q.get("total") or 0) > 0 and (not since or q["created_at"] >= since)
+    s = await get_session(lead)
+    if fresh and (q.get("source") != "itemizer" or not any(i["status"] != "removed" for i in s["items"])):
         return q
-    _, priced = await turn(lead, "", {}, False, True)
+    _, priced = await turn(lead, "", {}, False, True)  # re-price so scope added after the last saved quote is included
     return await save_itemized(lead, priced) or q
 
 
@@ -1020,9 +1025,8 @@ async def save_itemized(lead, priced):
     q = await latest_quote(lead["id"])
     lines = [{k: v for k, v in line.items() if k != "facts"} for line in priced["lines"]]
     if q and q.get("source") == "itemizer" and [(i["label"], i["amount"]) for i in q["line_items"]] == [(i["label"], i["amount"]) for i in lines] \
-            and all(q.get(k) == priced.get(k) for k in ("total", "low", "high", "assumptions", "if_not")):
+            and all(q.get(k) == priced.get(k) for k in ("total", "assumptions", "if_not")):
         return q
     status = "live" if lead["status"] == "walkthru_initiated" else "sent"
     return await save_quote(lead, lines, priced["total"], status, {
-        "low": priced["low"], "high": priced["high"], "drivers": priced["drivers"], "assumptions": priced["assumptions"],
-        "range_pct": priced["range_pct"], "source": "itemizer", "if_not": priced.get("if_not")})
+        "drivers": priced["drivers"], "assumptions": priced["assumptions"], "source": "itemizer", "if_not": priced.get("if_not")})

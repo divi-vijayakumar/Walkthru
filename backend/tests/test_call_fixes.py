@@ -337,7 +337,7 @@ def test_fix10_cant_answer(s, L):
     r, log = drive(s, lid, r)
     print(log, r["assumptions"])
     assert "fan_vents_outside" not in [f for f, _, _ in log]
-    assert any("fan vents outside" in a and "(assumed, to confirm at the site visit)" in a for a in r["assumptions"]), r["assumptions"]
+    assert any("fan vents outside" in a.lower() and "(assumed, to confirm at the site visit)" in a for a in r["assumptions"]), r["assumptions"]
     reset(s, lid)
     r = opening(s, lid, "new exhaust fan", {"fan_exists": "yes"}, True)
     r, log = drive(s, lid, r, camera_on=True)

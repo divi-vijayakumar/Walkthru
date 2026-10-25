@@ -1,0 +1,69 @@
+{
+  "summary": "Re-tested the 'every call ends with one exact quote' work: R1-R5, the 15:34 replay, wants_price/done-words/skipped/question budget, the Vapi webhook and portal agent/end backstop with one quote_ready message, the empty-scope package, PDFs, and the UI (Quotes page, QuoteDetail, LeadDrawer, portal quote, live estimate card in chat mode). Most of it works. Three bugs remain: (1) a free-text answer to a numeric fact gets the same question again (the 15:34 symptom), (2) invalid categorical answers are stored as-is and underprice items, (3) the portal and dashboard APIs still return low/high/range_pct. Full backend suite run serially (-n 0): 180 passed, 6 failed, 30 skipped. The 6 failures are obsolete tests or environment assumptions, not regressions from this change.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/itemizer/{lead_id}/turn and Vapi update_scope", "issue": "Each fact is supposed to be asked only once, but a free-text answer to a numeric fact breaks this. 'Retile the shower walls' asks shower_wall_area. If the answer is {'shower_wall_area':'pretty big I guess'} (or 'standard', 'big'), the exact same question comes back on the next turn, up to 3 times, and each repeat uses up the 5-question budget. RCA: engine.apply_answers ~line 401-403: when measure() returns None it does `continue` and leaves the fact 'asked'. The unanswered->assume step in run turn (line 765) skips it because the name IS in answers. Fix: `if num is None: self.assume(f); continue`.", "priority": "HIGH"},
+      {"endpoint": "POST /api/itemizer/{lead_id}/turn and Vapi update_scope", "issue": "R4 is only partly fixed. It no longer returns 500, but categorical answers are still not checked against the options. Itemizer.normalize() falls through to `return t`, so the raw text is stored as the value. Example: new_vanity_sinks='purple maybe' and new_vanity_mount='whatever you think' price the New vanity at $450, versus $2,900 with defaults. floor_new='banana' prices the Bathroom floor at $120 instead of $660. The bad value is silently priced, and these facts don't show in assumptions. Fix: if normalize finds no synonym or option, return None, and apply_answers should then assume the default.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/portal/{token} (quote), GET /api/dashboard (lead.quote), quotes/routes.py:33, calls/routes.py:86", "issue": "The user asked for no low/high/range anywhere, but the payloads still include low/high/range_pct. Itemizer quotes have low=high=total. Legacy save_quote/persist/default_quote still compute total*0.9/1.1, and vapi summary() (the legacy_adjust path) returns those ranges to Alex."},
+      {"endpoint": "docs/vapi-update-scope-tool.md line 24", "issue": "The prompt notes for Alex still say 'give the `low` to `high` range' when pricing. If the live Vapi assistant prompt was built from this doc, Alex may still say a range. Update the doc and the Vapi dashboard prompt to say one exact total."},
+      {"endpoint": "itemizer run turn line 778", "issue": "Design risk: when a turn has answers, everything in 'said' is ignored as new work. So 'standard, and also add a new toilet' sent with answers drops the toilet without telling anyone. This matches the spec, but Alex's prompt should send new work as a separate said-only turn."},
+      {"endpoint": "PRICE_WORDS regex", "issue": "'how much' and 'quote' match anywhere, so 'not sure how much space there is' or 'I got a quote from another guy' ends questioning and prices right away."},
+      {"endpoint": "ensure_quote (call-end backstop)", "issue": "If a quote above $0 was saved earlier in the call, the backstop reuses it even when more scope was added after that price. The WhatsApp message then sends the older total."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "QuoteDetail / PDF assumptions", "issues": ["Wording is redundant: 'Assumed finish level: standard (assumed, to confirm at the site visit)' says 'assumed' twice. It is not the old doubled suffix, but it reads awkwardly."]}
+    ]
+  },
+  "passed_checks": [
+    "R1: 'Hi, good afternoon' -> needs_info 'What work would you like done?', no package",
+    "Empty scope + wants_price -> 'Bathroom remodel, standard finish, medium size (assumed)' > $0",
+    "R2: package removed once a toilet is added; and once a custom koi-wall line is priced from the dashboard",
+    "R3: LED mirror -> Lighted (LED) mirror + Hardwired line + Permit (electrical), no exhaust fan; shower wall retile -> no Walk-in shower; descriptive clauses -> no custom line; niche -> Shower niche; wallpaper -> Accent wallpaper",
+    "R4: free text or numbers on every KB fact -> 200 on /turn and on update_scope via the portal agent/tools",
+    "R5: not sure / Not sure. / I'm not sure / no idea / I don't know -> assumed, never asked again; no doubled site-visit suffix",
+    "wants_price=true from a fresh state, a pending question, camera_on, or custom-only scope -> always ok > $0",
+    "Done-words (that's it, nothing else, just give me the quote, let's conclude, wrap up, Let's wrap this up.) -> price",
+    "Skipped facts never asked again; at most 5 questions, then price",
+    "Answers are not work: 'No size change' / 'no' / 'nothing else' create no lines and no to_be_priced",
+    "test_replay_1534_call passes",
+    "Vapi webhook end-of-call-report (2x and 3x) and portal agent/end (2x) -> one quote above $0 and exactly one quote_ready WhatsApp with the exact $ total",
+    "if_not gives an exact difference ('If it turns out to be load-bearing, the price goes up by $6,800.')",
+    "Dashboard PDF and portal PDF: exact total, no 'range' text",
+    "UI: Quotes page, QuoteDetail, LeadDrawer, portal quote card and live estimate card (chat mode) show one exact total, no '$X to $X'; PDF download works",
+    "Chat (mock) flow: add work -> 'not sure' -> priced $7,060 -> chat auto-ended -> one quote_ready message"
+  ],
+  "full_suite_failures_classification": {
+    "test_walkthru_v2_api::test_dashboard_seed": "Obsolete: expects exactly 9 leads (real and leftover TEST_ leads exist)",
+    "test_walkthru_v2_api::test_estimate_and_discount": "Obsolete: expects update_scope to price without wants_price and asserts low<=total<=high",
+    "test_walkthru_v2_api::test_webhook_no_quote_pending": "Obsolete: expects walkthru_completed + quote_pending; the backstop now generates the quote",
+    "test_walkthru_v2_api::test_portal_flow": "Environment: expects voice mode 'mock', but the env is 'vapi'",
+    "test_walkthru_v2_api::test_recall_takeover_transcript": "Takeover system line not found on the seeded lead-maya session (stale seed state). HAZARD: this test recalls the quote of the first NON-TEST_ quote_generated lead, so it could recall a real lead's quote (e.g. Dhivya once she has one). Restrict it to lead-* or TEST_ leads.",
+    "test_reset_preserves_real::test_reset_keeps_real_and_test_leads": "Stale expectation: asserts real leads are 'invited', but Dhivya is walkthru_completed after her real call (the reset itself did not change real leads)"
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration18_exact_quote.py", "/app/backend/tests/test_exact_quote.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix apply_answers: an unparseable numeric answer -> assume the fact (never ask again)",
+    "Check categorical answers against options/synonyms; if nothing matches, assume the default instead of storing the raw text",
+    "Remove low/high/range_pct from the portal, dashboard, quotes and calls API payloads and from the legacy vapi summary(), or set them all to total",
+    "Update docs/vapi-update-scope-tool.md and the live Vapi assistant prompt: say one exact total, never a low-to-high range",
+    "Update or retire the obsolete tests in test_walkthru_v2_api.py and test_reset_preserves_real.py, and stop test_recall_takeover_transcript from touching non-TEST_ leads",
+    "Optional: the backstop should re-price if scope changed after the last saved quote; narrow PRICE_WORDS ('how much', 'quote')"
+  ],
+  "critical_code_review_comments": [
+    "itemizer/engine.py is 1028 lines; split it (pricing, questions, camera, persistence)",
+    "Itemizer.normalize returns raw text on no match. This is the root cause of the underpricing bug",
+    "save_quote in core/quotes.py still computes ±10% low/high for every quote; itemizer overrides it through extra"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration18_exact_quote.py (new)", "/app/backend/tests/_ui_seed_it18.py (new helper: seed a TEST_ UI quote / clean all TEST_ leads)"],
+  "success_rate": {"backend": "88% (23/26 new tests; 3 real bugs)", "frontend": "100%"},
+  "seed_data_creation": "Only TEST_* leads were created. All TEST_ leads (including leftovers from earlier runs of the full suite) and their itemizer_sessions/insights/goals/tips, quotes, sms_log, call_sessions, followups and pricing_states were deleted, and test sessions were removed. Real leads Dhivya and Sathish were not touched (Dhivya is still walkthru_completed with no quote; the main agent will reset her). Note: the full suite (test_reset_preserves_real, test_walkthru_v2_api) resets and changes the seeded sample lead-* leads.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iteration18_exact_quote.py tests/test_exact_quote.py -n 0. Expected failures until fixed: test_unparseable_numeric_answer_not_reasked, test_invalid_categorical_answer_not_underpriced, test_portal_payload_no_range. New leads may lack portal_token until POST /leads/{id}/start-agent. Portal voice mode is 'vapi'; the chat path ('Prefer to type? Use chat instead') uses the mock agent/tools and auto-ends after a price. Camera/Percia not tested (deferred by the user)."
+}

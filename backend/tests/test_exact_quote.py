@@ -34,6 +34,8 @@ def new_lead(s, made, ask="Bathroom remodel"):
     r = s.post(f"{API}/leads", json={"name": f"TEST_Exact {uuid.uuid4().hex[:4]}", "phone": SAFE_PHONE, "source": "website", "ask": ask})
     assert r.status_code == 200, r.text
     made.append(r.json()["lead"]["id"])
+    if not r.json()["lead"].get("portal_token"):
+        s.post(f"{API}/leads/{made[-1]}/start-agent")
     return _db.leads.find_one({"id": made[-1]}, {"_id": 0})
 
 

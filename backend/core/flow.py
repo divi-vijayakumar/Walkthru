@@ -45,7 +45,7 @@ async def create_lead(name, phone, source, ask):
     lead = {
         "id": str(uuid.uuid4()), "contractor_id": CONTRACTOR_ID, "name": name.strip(), "phone": format_phone(phone),
         "source": source, "ask": ask.strip(), "status": "new", "status_history": [{"status": "new", "at": at}],
-        "portal_token": None, "portal_link": None, "quote_total": None, "quote_low": None, "quote_high": None,
+        "portal_token": None, "portal_link": None, "quote_total": None,
         "quote_version": None, "escalated": False, "quote_pending": False, "quote_pending_due_at": None,
         "followup_queued": False, "created_at": at, "last_activity_at": at,
     }
@@ -216,7 +216,7 @@ async def recall_quote(lead):
     await db.contracts.update_many({"lead_id": lead["id"]}, {"$set": {"void": True}})
     await db.payments.update_many({"lead_id": lead["id"], "status": "pending"}, {"$set": {"void": True, "status": "void"}})
     await set_status(lead["id"], "walkthru_completed", {
-        "quote_total": None, "quote_low": None, "quote_high": None, "quote_version": None,
+        "quote_total": None, "quote_version": None,
         "quote_pending": True, "quote_pending_due_at": iso(now() + timedelta(minutes=15))})
 
 

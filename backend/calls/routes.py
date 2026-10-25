@@ -83,7 +83,7 @@ async def call_detail(call_id: str):
             findings.append({"fact_id": g["fact_id"], "explanation": res.get("explanation"), "label": hit.get("label"),
                              "frame_url": hit.get("frame_url"), "box": hit.get("box"), "result": res.get("result")})
     quotes = await db.quotes.find({"lead_id": s["lead_id"], "created_at": {"$gte": s["started_at"], "$lte": s.get("ended_at") or iso()}},
-                                  {"_id": 0, "version": 1, "total": 1, "low": 1, "high": 1, "status": 1, "created_at": 1}).sort("version", 1).to_list(50)
+                                  {"_id": 0, "version": 1, "total": 1, "status": 1, "created_at": 1}).sort("version", 1).to_list(50)
     leads = {lead.get("id"): lead}
     return {**await summary(s, leads), "lead_phone": lead.get("phone"), "transcript": s.get("transcript") or [],
             "recording": rec, "summary": s.get("summary"), "findings": findings, "quotes": quotes}

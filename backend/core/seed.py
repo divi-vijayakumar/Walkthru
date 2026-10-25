@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timedelta
 from core.db import db, iso, now, portal_link, CONTRACTOR_ID
 from core.status import FLOW
-from pricing.engine import new_state, price, margin_pct, drivers, r500, DEPOSIT_PCT
+from pricing.engine import new_state, price, margin_pct, drivers, DEPOSIT_PCT
 
 logger = logging.getLogger("seed")
 SEED_VERSION = 5
@@ -59,7 +59,7 @@ def build_quote(lead_id, spec, at, status):
     for i in items:
         i["is_new"] = False
     quote = {"id": f"quote-{lead_id}", "lead_id": lead_id, "version": 1, "line_items": items, "total": total,
-             "low": r500(total * 0.9), "high": r500(total * 1.1), "deposit_pct": DEPOSIT_PCT,
+             "deposit_pct": DEPOSIT_PCT,
              "deposit_amount": int(round(total * DEPOSIT_PCT / 100.0)), "status": status, "created_at": at, **extra}
     return quote, st
 
@@ -73,7 +73,7 @@ async def insert_lead(row):
     lead = {"id": lead_id, "contractor_id": CONTRACTOR_ID, "name": name, "phone": phone, "source": source, "ask": ask,
             "status": status, "status_history": history, "portal_token": token,
             "portal_link": portal_link(token) if status != "new" else None,
-            "quote_total": None, "quote_low": None, "quote_high": None, "quote_version": None,
+            "quote_total": None, "quote_version": None,
             "escalated": False, "quote_pending": False, "quote_pending_due_at": None, "followup_queued": False,
             "created_at": history[0]["at"], "last_activity_at": history[-1]["at"]}
     idx = FLOW.index(status)
@@ -86,7 +86,7 @@ async def insert_lead(row):
         await db.quotes.insert_one(quote)
         if st:
             await db.pricing_states.insert_one({"lead_id": lead_id, "state": st})
-        lead.update(quote_total=quote["total"], quote_low=quote["low"], quote_high=quote["high"], quote_version=1)
+        lead.update(quote_total=quote["total"], quote_version=1)
         if idx >= 5:
             signed = history[6]["at"] if idx >= 6 else None
             await db.contracts.insert_one({"id": f"contract-{lead_id}", "lead_id": lead_id, "quote_version": 1,

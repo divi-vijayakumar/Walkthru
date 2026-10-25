@@ -1,8 +1,8 @@
 import os
 from typing import List, Literal, Optional
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
-from core.db import db, iso, get_contractor
+from core.db import db, get_contractor
 from core.quotes import latest_quote
 from core import flow
 from vapi.routes import read_message, run_tool_calls, parse_transcript

@@ -46,6 +46,8 @@ def new_lead(s, made, ask):
     r = s.post(f"{API}/leads", json={"name": f"TEST_Open {uuid.uuid4().hex[:4]}", "phone": SAFE_PHONE, "source": "website", "ask": ask})
     assert r.status_code == 200, r.text
     made[0].append(r.json()["lead"]["id"])
+    if not r.json()["lead"].get("portal_token"):
+        s.post(f"{API}/leads/{made[0][-1]}/start-agent")
     return _db.leads.find_one({"id": r.json()["lead"]["id"]}, {"_id": 0})
 
 
@@ -175,7 +177,7 @@ def test_end_call_without_priced_quote_is_pending(s, made):
     after = _db.leads.find_one({"id": lead["id"]})
     q = _db.quotes.find_one({"lead_id": lead["id"]}, sort=[("version", -1)])
     assert q and q["total"] > 0 and not after.get("quote_pending"), (q, after.get("quote_pending"))
-    assert q.get("low") == q.get("high") == q["total"] and q.get("range_pct") == 0
+    assert "low" not in q and "high" not in q and "range_pct" not in q
     sent = [m for m in _db.sms_log.find({"lead_id": lead["id"]}) if m.get("kind") == "quote_ready"]
     assert len(sent) == 1 and f"${q['total']:,}" in sent[0]["body"] and "Here's your quote from today's call with" in sent[0]["body"], sent
 

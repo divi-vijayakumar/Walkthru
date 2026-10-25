@@ -66,8 +66,9 @@ class TestQuotes:
         assert {"open", "accepted", "count"} <= set(d["totals"])
         assert d["quotes"], "no quotes"
         q = d["quotes"][0]
-        for k in ("id", "lead_name", "version", "status", "total", "low", "high", "latest", "sample"):
+        for k in ("id", "lead_name", "version", "status", "total", "latest", "sample"):
             assert k in q
+        assert "low" not in q and "high" not in q
         cur = [x for x in d["quotes"] if x["latest"] and x["status"] != "recalled"]
         assert d["totals"]["count"] == len(cur)
         assert d["totals"]["open"] == sum(x["total"] for x in cur if x["status"] in ("live", "sent"))

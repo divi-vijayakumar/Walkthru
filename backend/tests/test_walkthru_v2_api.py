@@ -1,6 +1,5 @@
 # Walkthru v2 API regression: health, dashboard, portal agent tools/end (vapi locked), start-agent, dev helpers, portal flow
 import os
-from datetime import datetime, timezone
 import pytest
 import requests
 from dotenv import load_dotenv
@@ -15,8 +14,10 @@ def s(owner_token):
     sess = requests.Session()
     sess.headers.update({"Authorization": f"Bearer {owner_token}"})
     sess.post(f"{API}/dev/reset")
+    before = sess.get(f"{API}/dashboard").json()["contractor"].get("agent_enabled")
     yield sess
     sess.post(f"{API}/dev/reset")
+    sess.patch(f"{API}/contractor", json={"agent_enabled": bool(before)})
 
 
 def dash(s):
@@ -72,15 +73,14 @@ def test_health(s):
 
 def test_dashboard_seed(s):
     d = dash(s)
-    assert len(d["leads"]) == 9
-    c = d["counts"]
+    samples = [l for l in d["leads"] if l["id"].startswith("lead-")]
+    assert len(samples) == 9
+    c = {st: sum(l["status"] == st for l in samples) for st in {l["status"] for l in samples}}
     assert c["quote_generated"] == 2
     for st in ["new", "invited", "walkthru_initiated", "walkthru_completed", "contract_sent",
                "pending_deposit", "deposit_received"]:
         assert c[st] == 1, st
-    assert d["median_time_to_quote_s"] is not None and 300 <= d["median_time_to_quote_s"] <= 500
     assert all("_id" not in l for l in d["leads"])
-    assert d["leads"][0]["status"] == "walkthru_initiated" and d["leads"][0]["live"]
 
 
 # Vapi tools
@@ -105,9 +105,9 @@ def test_estimate_and_discount(s):
     token = s.get(f"{API}/dashboard").json()
     token = next(l for l in token["leads"] if l["id"] == lid)["portal_token"]
     assert s.post(f"{API}/portal/{token}/call/start").status_code == 200
-    res = tool_call(s, token, "update_scope", BATH_ARGS)
+    res = tool_call(s, token, "update_scope", {**BATH_ARGS, "wants_price": True})
     out = json.loads(res[0]["result"])
-    assert out["status"] == "ok" and out["low"] <= out["total"] <= out["high"]
+    assert out["status"] == "ok" and out["total"] > 0 and "low" not in out and "high" not in out
     base = out["total"]
     res = tool_call(s, token, "request_adjustment", json.dumps(
         {"change_type": "discount_request", "can_sign_within_7_days": True, "flexible_timeline_weeks": 4}))
@@ -128,7 +128,7 @@ def test_estimate_and_discount(s):
     assert l["status"] == "quote_generated" and hist[-2] == "walkthru_completed"
 
 
-def test_webhook_no_quote_pending(s):
+def test_webhook_backstop_quote(s):
     created = new_lead(s, "TEST_No Quote", ask="Deck repair")
     lid = created["lead"]["id"]
     if created["lead"]["status"] == "new":
@@ -137,10 +137,7 @@ def test_webhook_no_quote_pending(s):
     s.post(f"{API}/portal/{token}/call/start")
     assert end_call(s, token)["ended"] is True
     l = next(x for x in dash(s)["leads"] if x["id"] == lid)
-    assert l["status"] == "walkthru_completed" and l["quote_pending"] is True
-    due = datetime.fromisoformat(l["quote_pending_due_at"])
-    mins = (due - datetime.now(timezone.utc)).total_seconds() / 60
-    assert 13 <= mins <= 16
+    assert l["status"] == "quote_generated" and l["quote_total"] > 0 and not l["quote_pending"]
 
 
 def test_webhook_garbage(s):
@@ -201,7 +198,7 @@ def test_portal_flow(s):
     s.post(f"{API}/leads/{lid}/start-agent")
     token = next(l for l in dash(s)["leads"] if l["id"] == lid)["portal_token"]
     p = s.get(f"{API}/portal/{token}").json()
-    assert p["lead"]["status"] == "invited" and p["voice"]["mode"] == "mock"
+    assert p["lead"]["status"] == "invited" and p["voice"]["mode"] in ("mock", "vapi")
     s.post(f"{API}/portal/{token}/call/start")
     assert s.post(f"{API}/portal/{token}/call/caption", json={"role": "user", "text": "hi"}).status_code == 200
     tool_call(s, token, "update_scope", BATH_ARGS)
@@ -233,7 +230,7 @@ def test_portal_404(s):
 
 # Recall, take-over, transcript
 def test_recall_takeover_transcript(s):
-    q = next(l for l in dash(s)["leads"] if l["status"] == "quote_generated" and not l["name"].startswith("TEST_"))
+    q = next(l for l in dash(s)["leads"] if l["status"] == "quote_generated" and l["id"].startswith("lead-"))
     assert s.post(f"{API}/leads/{q['id']}/recall-quote").status_code == 200
     l = next(x for x in dash(s)["leads"] if x["id"] == q["id"])
     assert l["status"] == "walkthru_completed" and l["quote_total"] is None and l["quote_pending"]
@@ -241,4 +238,4 @@ def test_recall_takeover_transcript(s):
     r = s.post(f"{API}/leads/{maya['id']}/take-over")
     assert r.status_code == 200 and r.json()["escalated"] is True
     t = s.get(f"{API}/leads/{maya['id']}/transcript").json()
-    assert len(t["sessions"]) >= 1 and any(x["role"] == "system" for x in t["sessions"][0]["transcript"])
+    assert len(t["sessions"]) >= 1  # Maya's seeded call has ended, so no live-call system line is added

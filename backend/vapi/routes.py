@@ -18,8 +18,8 @@ logger = logging.getLogger("vapi")
 
 
 def summary(q, say, status="ok"):
-    return {"status": status, "say": say, "version": q["version"], "total": q["total"], "low": q["low"],
-            "high": q["high"], "drivers": q.get("drivers") or [], "deposit_percent": q["deposit_pct"],
+    return {"status": status, "say": say, "version": q["version"], "total": q["total"],
+            "drivers": q.get("drivers") or [], "deposit_percent": q["deposit_pct"],
             "deposit_amount": q["deposit_amount"]}
 
 
@@ -62,9 +62,6 @@ async def tool_update_scope(lead, args, mode):
     out, priced = await itemizer_turn(lead, args.get("said") or "", args.get("answers") or {}, cam, bool(args.get("wants_price")),
                                       [str(x) for x in (args.get("skipped") or []) if x][:20])
     camera.after_turn(lead)
-    out.pop("low", None)
-    out.pop("high", None)
-    out.pop("range_pct", None)
     if priced:
         q = await save_itemized(lead, priced)
         out["version"] = q["version"] if q else None
